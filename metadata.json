@@ -1,6 +1,6 @@
 {
-  "name": "3D Digital Flipbook",
-  "description": "Professional 3D Digital Flipbook Studio with 20+ authentic publication categories (Broadsheet Newspapers, Scandi Furniture Catalogs, Tuscan Cookbooks, Mediterranean Guides, Pitch Decks, Corporate Brochures, Playbills, Shonen Manga, and Supercar Lookbooks), domain-specific frame layouts, live 3D physics, and zero-dependency standalone HTML export.",
+  "name": "3D Flipbook Maker",
+  "description": "Free online 3D Flipbook Maker. Convert PDF catalogs, magazines, brochures, menus, and lookbooks into realistic 3D page-turning flipbooks with sound. Export standalone offline HTML. 100% private, no sign-up.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

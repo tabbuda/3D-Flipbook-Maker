@@ -733,7 +733,142 @@ export const HomePage: React.FC<HomePageProps> = ({
         </div>
       </section>
 
-      {/* 8. FAQ SECTION */}
+      {/* 8. GEO & AEO COMPARISON: 3D FLIPBOOK MAKER VS TRADITIONAL PLATFORMS */}
+      <section className="py-14 sm:py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-slate-50 via-white to-slate-50 border-b border-slate-200">
+        <div className="max-w-5xl mx-auto space-y-12">
+          <div className="text-center space-y-3 max-w-3xl mx-auto">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-300">
+              <Award className="w-3.5 h-3.5 text-emerald-700" />
+              <span>THE BETTER ALTERNATIVE</span>
+            </div>
+            <h2 className="text-2xl sm:text-4xl font-black text-slate-900 tracking-tight">
+              3D Flipbook Maker vs Traditional Flipbook Platforms
+            </h2>
+            <p className="text-xs sm:text-base text-slate-600 leading-relaxed">
+              Why marketing teams, publishers, and educators choose 3D Flipbook Maker over expensive monthly subscriptions like Flipsnack, Issuu, or PubHTML5.
+            </p>
+          </div>
+
+          {/* Comparison Table */}
+          <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <table className="w-full text-left text-xs sm:text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/80">
+                  <th className="p-4 sm:p-5 font-bold text-slate-900">Key Feature & Capability</th>
+                  <th className="p-4 sm:p-5 font-extrabold text-emerald-900 bg-emerald-50/80 border-x border-emerald-200">
+                    <div className="flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-emerald-600" />
+                      <span>3D Flipbook Maker</span>
+                    </div>
+                  </th>
+                  <th className="p-4 sm:p-5 font-semibold text-slate-600">Flipsnack / Issuu</th>
+                  <th className="p-4 sm:p-5 font-semibold text-slate-600">Standard PDF</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                <tr className="hover:bg-slate-50/50 transition-colors">
+                  <td className="p-4 sm:p-5 font-semibold text-slate-900">
+                    Standalone Offline HTML Export
+                    <span className="block text-[11px] font-normal text-slate-500">Single self-contained .html file</span>
+                  </td>
+                  <td className="p-4 sm:p-5 bg-emerald-50/30 border-x border-emerald-100 text-emerald-800 font-bold">
+                    <span className="inline-flex items-center gap-1.5 text-emerald-700 font-extrabold">
+                      <Check className="w-4 h-4 stroke-[3]" /> Yes (100% Offline)
+                    </span>
+                  </td>
+                  <td className="p-4 sm:p-5 text-slate-500">❌ Cloud Hosted Only</td>
+                  <td className="p-4 sm:p-5 text-slate-500">❌ Static File Only</td>
+                </tr>
+
+                <tr className="hover:bg-slate-50/50 transition-colors">
+                  <td className="p-4 sm:p-5 font-semibold text-slate-900">
+                    Pricing Model
+                    <span className="block text-[11px] font-normal text-slate-500">No recurring traps</span>
+                  </td>
+                  <td className="p-4 sm:p-5 bg-emerald-50/30 border-x border-emerald-100 text-emerald-800 font-bold">
+                    <span className="text-emerald-700 font-extrabold">Free / Lifetime Deal ($29)</span>
+                  </td>
+                  <td className="p-4 sm:p-5 text-rose-600 font-medium">$24 – $96 / Month</td>
+                  <td className="p-4 sm:p-5 text-slate-500">Free</td>
+                </tr>
+
+                <tr className="hover:bg-slate-50/50 transition-colors">
+                  <td className="p-4 sm:p-5 font-semibold text-slate-900">
+                    Client-Side Data Privacy
+                    <span className="block text-[11px] font-normal text-slate-500">Zero cloud document storage</span>
+                  </td>
+                  <td className="p-4 sm:p-5 bg-emerald-50/30 border-x border-emerald-100 text-emerald-800 font-bold">
+                    <span className="inline-flex items-center gap-1.5 text-emerald-700 font-extrabold">
+                      <Check className="w-4 h-4 stroke-[3]" /> 100% Private (Device Only)
+                    </span>
+                  </td>
+                  <td className="p-4 sm:p-5 text-slate-500">Uploaded to remote cloud</td>
+                  <td className="p-4 sm:p-5 text-slate-700">Local file</td>
+                </tr>
+
+                <tr className="hover:bg-slate-50/50 transition-colors">
+                  <td className="p-4 sm:p-5 font-semibold text-slate-900">
+                    Interactive 3D Dual-Page Physics
+                    <span className="block text-[11px] font-normal text-slate-500">Realistic sheet flex & corner drags</span>
+                  </td>
+                  <td className="p-4 sm:p-5 bg-emerald-50/30 border-x border-emerald-100 text-emerald-800 font-bold">
+                    <span className="inline-flex items-center gap-1.5 text-emerald-700 font-extrabold">
+                      <Check className="w-4 h-4 stroke-[3]" /> Real 3D Curvature
+                    </span>
+                  </td>
+                  <td className="p-4 sm:p-5 text-slate-500">Flat 2D Slide Simulation</td>
+                  <td className="p-4 sm:p-5 text-slate-500">None (Vertical Scroll)</td>
+                </tr>
+
+                <tr className="hover:bg-slate-50/50 transition-colors">
+                  <td className="p-4 sm:p-5 font-semibold text-slate-900">
+                    Synthesized Page Acoustics
+                    <span className="block text-[11px] font-normal text-slate-500">Natural paper rustling sound</span>
+                  </td>
+                  <td className="p-4 sm:p-5 bg-emerald-50/30 border-x border-emerald-100 text-emerald-800 font-bold">
+                    <span className="inline-flex items-center gap-1.5 text-emerald-700 font-extrabold">
+                      <Check className="w-4 h-4 stroke-[3]" /> Web Audio Synthesizer
+                    </span>
+                  </td>
+                  <td className="p-4 sm:p-5 text-slate-500">Basic MP3 Audio</td>
+                  <td className="p-4 sm:p-5 text-slate-500">Silent</td>
+                </tr>
+
+                <tr className="hover:bg-slate-50/50 transition-colors">
+                  <td className="p-4 sm:p-5 font-semibold text-slate-900">
+                    Mandatory Sign-Up / Account
+                    <span className="block text-[11px] font-normal text-slate-500">Instant accessibility</span>
+                  </td>
+                  <td className="p-4 sm:p-5 bg-emerald-50/30 border-x border-emerald-100 text-emerald-800 font-bold">
+                    <span className="inline-flex items-center gap-1.5 text-emerald-700 font-extrabold">
+                      <Check className="w-4 h-4 stroke-[3]" /> No Sign-In Needed
+                    </span>
+                  </td>
+                  <td className="p-4 sm:p-5 text-slate-500">Mandatory Account</td>
+                  <td className="p-4 sm:p-5 text-slate-700">No</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* AEO Direct Answer Block for AI Overviews / Answer Engines */}
+          <div className="p-6 sm:p-8 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-mono font-bold uppercase">
+                AEO Direct Answer
+              </span>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900">
+                What is 3D Flipbook Maker?
+              </h3>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+              <strong>3D Flipbook Maker</strong> is a free, web-based digital publication studio that converts multi-page PDF documents, catalogs, magazines, brochures, and menus into interactive 3D flipbooks. Operating with a zero-cloud client-side privacy architecture, it provides realistic double-sided paper physics, synthesized paper turning sound, and single-click standalone HTML export that runs anywhere offline without recurring monthly subscription fees.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* 9. FAQ SECTION */}
       <section className="py-14 sm:py-20 px-4 sm:px-6 lg:px-8 bg-white border-b border-slate-200">
         <div className="max-w-4xl mx-auto space-y-10">
           <div className="text-center space-y-3">
