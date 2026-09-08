@@ -381,6 +381,7 @@ export default function App() {
             onOpenUploadModal={() => setIsUploadModalOpen(true)}
             onOpenInstallModal={() => setIsInstallModalOpen(true)}
             onOpenPdfModal={() => setIsPdfModalOpen(true)}
+            onOpenLicenseModal={() => setIsLicenseModalOpen(true)}
           />
         </div>
       )}

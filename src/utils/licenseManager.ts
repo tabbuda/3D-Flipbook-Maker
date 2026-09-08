@@ -53,20 +53,36 @@ export function validateLicenseFormat(rawKey: string): { isValid: boolean; sourc
     return { isValid: true, source: 'promo', cleanKey };
   }
 
-  // 2. Check AppSumo Prefix code (AS-XXXX-XXXX or AS-XXXX-XXXX-XXXX)
+  // 2. Check Gumroad prefix or standard Gumroad license key formats (UUID or 4-part / 5-part keys)
+  if (cleanKey.startsWith('GUM-') || cleanKey.startsWith('PRO-')) {
+    return { isValid: true, source: 'direct', cleanKey };
+  }
+
+  // Standard UUID license format (e.g., A1B2C3D4-E5F6-7890-ABCD-1234567890EF)
+  const uuidPattern = /^[A-Z0-9]{8}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{12}$/;
+  if (uuidPattern.test(cleanKey)) {
+    return { isValid: true, source: 'direct', cleanKey };
+  }
+
+  // 3. Check AppSumo Prefix code (AS-XXXX-XXXX or AS-XXXX-XXXX-XXXX)
   if (cleanKey.startsWith('AS-') && cleanKey.length >= 8) {
     return { isValid: true, source: 'appsumo', cleanKey };
   }
 
-  // 3. Check Standard Flipbook Pro Key (FLIP-XXXX-XXXX or 12+ chars alphanumeric with hyphens)
+  // 4. Check Standard Flipbook Pro Key (FLIP-XXXX-XXXX or 10+ chars alphanumeric with hyphens)
   if (cleanKey.startsWith('FLIP-') && cleanKey.length >= 10) {
     return { isValid: true, source: 'direct', cleanKey };
   }
 
-  // 4. Check general AppSumo invoice / voucher pattern (e.g. 10 to 24 characters alphanumeric)
-  const codePattern = /^[A-Z0-9]{4,8}-[A-Z0-9]{4,8}(-[A-Z0-9]{4,8})?$/;
+  // 5. Check general multi-segment code patterns (e.g. XXXX-XXXX-XXXX or XXXX-XXXX-XXXX-XXXX)
+  const codePattern = /^[A-Z0-9]{3,8}(-[A-Z0-9]{3,8}){1,4}$/;
   if (codePattern.test(cleanKey)) {
-    return { isValid: true, source: 'appsumo', cleanKey };
+    return { isValid: true, source: 'direct', cleanKey };
+  }
+
+  // Fallback: any valid alphanumeric key at least 10 chars long
+  if (/^[A-Z0-9]{10,36}$/.test(cleanKey)) {
+    return { isValid: true, source: 'direct', cleanKey };
   }
 
   return { isValid: false, source: 'direct', cleanKey };

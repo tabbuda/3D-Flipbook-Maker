@@ -45,6 +45,9 @@ import {
   TrendingUp,
   HeartHandshake,
   FileText,
+  Crown,
+  ExternalLink,
+  Key,
 } from 'lucide-react';
 
 interface HomePageProps {
@@ -56,6 +59,7 @@ interface HomePageProps {
   onOpenUploadModal?: () => void;
   onOpenInstallModal?: () => void;
   onOpenPdfModal?: () => void;
+  onOpenLicenseModal?: () => void;
 }
 
 export const HomePage: React.FC<HomePageProps> = ({
@@ -67,6 +71,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   onOpenUploadModal,
   onOpenInstallModal,
   onOpenPdfModal,
+  onOpenLicenseModal,
 }) => {
   // Live Demo Book Selector on Homepage
   const demoPresets = [
@@ -864,6 +869,63 @@ export const HomePage: React.FC<HomePageProps> = ({
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
               <strong>3D Flipbook Maker</strong> is a free, web-based digital publication studio that converts multi-page PDF documents, catalogs, magazines, brochures, and menus into interactive 3D flipbooks. Operating with a zero-cloud client-side privacy architecture, it provides realistic double-sided paper physics, synthesized paper turning sound, and single-click standalone HTML export that runs anywhere offline without recurring monthly subscription fees.
             </p>
+          </div>
+
+          {/* High-Converting Lifetime Deal Banner */}
+          <div className="rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 p-6 sm:p-10 text-white shadow-xl border border-emerald-500/30 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+            
+            <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-8">
+              <div className="space-y-4 text-center lg:text-left">
+                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-300 text-xs font-bold">
+                  <Crown className="w-4 h-4 text-amber-400" />
+                  <span>SPECIAL LAUNCH DEAL • PAY ONCE, USE FOREVER</span>
+                </div>
+
+                <h3 className="text-2xl sm:text-4xl font-black tracking-tight text-white">
+                  Unlock 3D Flipbook Pro for Just <span className="text-emerald-400">$29</span>
+                </h3>
+
+                <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
+                  Say goodbye to expensive monthly subscriptions like Flipsnack or Issuu. Get lifetime commercial access, up to 150 pages per PDF, 100% white-label exports, and standalone single-file HTML downloads.
+                </p>
+
+                <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4 pt-1 text-xs text-slate-300">
+                  <span className="flex items-center gap-1.5">
+                    <Check className="w-4 h-4 text-emerald-400" /> 150 Pages per PDF
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <Check className="w-4 h-4 text-emerald-400" /> 100% White-Label
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <Check className="w-4 h-4 text-emerald-400" /> Commercial Client Rights
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row lg:flex-col items-center gap-3 shrink-0 w-full lg:w-auto">
+                <a
+                  href="https://tabrej6.gumroad.com/l/3d-flipbook-pro"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full sm:w-auto lg:w-full px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-400 via-emerald-400 to-teal-400 hover:from-amber-300 hover:to-emerald-300 text-slate-950 font-black text-sm sm:text-base shadow-xl shadow-emerald-950/60 transition-all hover:scale-105 cursor-pointer flex items-center justify-center gap-2.5 group"
+                >
+                  <Crown className="w-5 h-5 text-slate-950" />
+                  <span>Get Lifetime Access ($29)</span>
+                  <ExternalLink className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                </a>
+
+                {onOpenLicenseModal && (
+                  <button
+                    onClick={onOpenLicenseModal}
+                    className="w-full sm:w-auto lg:w-full px-5 py-3 rounded-xl bg-white/10 hover:bg-white/15 text-slate-300 hover:text-white text-xs font-bold border border-white/10 transition-all cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <Key className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Already have a key? Redeem here</span>
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </section>

@@ -210,6 +210,23 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
                   <span>{statusMessage.text}</span>
                 </div>
               )}
+
+              {/* Direct Gumroad Checkout CTA */}
+              <div className="pt-1">
+                <a
+                  href="https://tabrej6.gumroad.com/l/3d-flipbook-pro"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-emerald-600 hover:from-amber-400 hover:to-emerald-500 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer group"
+                >
+                  <Crown className="w-4 h-4 text-slate-950" />
+                  <span>Get Pro Lifetime Access ($29) on Gumroad</span>
+                  <ExternalLink className="w-3.5 h-3.5 opacity-70 group-hover:translate-x-0.5 transition-transform" />
+                </a>
+                <p className="text-[10px] text-center text-slate-500 mt-1">
+                  ⚡ Instant license key delivery right after checkout via email & receipt.
+                </p>
+              </div>
             </form>
           )}
 
