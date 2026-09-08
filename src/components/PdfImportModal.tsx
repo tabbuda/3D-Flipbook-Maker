@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { BookProject, CoverThemeId } from '../types/flipbook';
 import { COVER_THEMES } from '../constants/templates';
 import { inspectPdfFile, convertPdfToFlipbook, PdfMetadata } from '../utils/pdfToFlipbook';
-import { getLicenseInfo, getPlanLimits, onLicenseChange } from '../utils/licenseManager';
+import { getLicenseInfo, getPlanLimits, onLicenseChange, canImportPdf, recordPdfImport, onUsageChange } from '../utils/licenseManager';
 import {
   FileText,
   Upload,
@@ -18,6 +18,7 @@ import {
   Zap,
   BookOpen,
   Crown,
+  ExternalLink,
 } from 'lucide-react';
 
 interface PdfImportModalProps {
@@ -36,9 +37,20 @@ export const PdfImportModal: React.FC<PdfImportModalProps> = ({
   onOpenLicenseModal,
 }) => {
   const [license, setLicense] = useState(() => getLicenseInfo());
+  const [importStatus, setImportStatus] = useState(() => canImportPdf());
 
   useEffect(() => {
-    return onLicenseChange((info) => setLicense(info));
+    const unsubLicense = onLicenseChange((info) => {
+      setLicense(info);
+      setImportStatus(canImportPdf());
+    });
+    const unsubUsage = onUsageChange(() => {
+      setImportStatus(canImportPdf());
+    });
+    return () => {
+      unsubLicense();
+      unsubUsage();
+    };
   }, []);
 
   const limits = getPlanLimits(license.tier);
@@ -120,6 +132,11 @@ export const PdfImportModal: React.FC<PdfImportModalProps> = ({
       return;
     }
 
+    if (!isPro && !importStatus.allowed) {
+      setError(importStatus.reason || 'Free plan limit reached. Upgrade to Pro for unlimited PDF conversions.');
+      return;
+    }
+
     setIsConverting(true);
     setError(null);
 
@@ -141,6 +158,7 @@ export const PdfImportModal: React.FC<PdfImportModalProps> = ({
       // Wait a moment so user sees 100% completion
       setTimeout(() => {
         setIsConverting(false);
+        recordPdfImport();
         onImportComplete(result.project, importMode);
         onClose();
       }, 500);
@@ -203,40 +221,111 @@ export const PdfImportModal: React.FC<PdfImportModalProps> = ({
             </div>
           )}
 
-          {/* STEP 1: Upload or Drop PDF */}
-          {!file && (
-            <div
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-3xl p-8 sm:p-12 text-center bg-white hover:bg-emerald-50/20 transition-all cursor-pointer group space-y-4 shadow-xs"
-            >
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
-                accept=".pdf,application/pdf"
-                className="hidden"
-              />
-
-              <div className="w-16 h-16 rounded-2xl bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center mx-auto group-hover:scale-110 transition-transform shadow-xs">
-                <Upload className="w-8 h-8" />
+          {/* Free Tier Limit Reached Screen */}
+          {!isPro && !importStatus.allowed ? (
+            <div className="p-6 sm:p-10 rounded-3xl bg-white border border-amber-300 shadow-md text-center space-y-5">
+              <div className="w-16 h-16 rounded-2xl bg-amber-100 text-amber-600 border border-amber-200 flex items-center justify-center mx-auto shadow-xs">
+                <Crown className="w-8 h-8 text-amber-600" />
               </div>
 
-              <div className="space-y-1.5 max-w-md mx-auto">
-                <h3 className="text-base sm:text-lg font-bold text-slate-900">
-                  Drag & Drop PDF document here
+              <div className="space-y-2">
+                <span className="px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold uppercase tracking-wider">
+                  Free Starter Limit: 1/1 PDF Imports Used
+                </span>
+                <h3 className="text-xl sm:text-2xl font-black text-slate-900">
+                  Free PDF Conversion Limit Reached
                 </h3>
-                <p className="text-xs text-slate-500">
-                  Supports magazines, restaurant menus, product catalogs, portfolios, reports, and books.
+                <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
+                  The Free Starter plan allows converting <strong>1 PDF</strong>. You have already used your 1 free conversion. Upgrade to Pro Lifetime to convert unlimited PDF documents, up to 150 pages per file, with 100% white-label exports!
                 </p>
               </div>
 
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-md shadow-emerald-700/20">
-                <FileText className="w-3.5 h-3.5" />
-                <span>Browse Computer or Phone</span>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+                <a
+                  href="https://tabrej6.gumroad.com/l/3d-flipbook-pro"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-emerald-600 hover:from-amber-400 hover:to-emerald-500 text-slate-950 font-black text-sm shadow-md transition-all flex items-center justify-center gap-2 group cursor-pointer"
+                >
+                  <Crown className="w-4 h-4 text-slate-950" />
+                  <span>Get Unlimited PDF Imports ($29)</span>
+                  <ExternalLink className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                </a>
+
+                {onOpenLicenseModal && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenLicenseModal();
+                    }}
+                    className="w-full sm:w-auto px-5 py-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold border border-slate-300 transition-all cursor-pointer"
+                  >
+                    Redeem License Key
+                  </button>
+                )}
               </div>
             </div>
+          ) : (
+            <>
+              {/* Free Plan Status Banner */}
+              {!isPro && !file && (
+                <div className="p-3 px-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center justify-between text-xs font-medium">
+                  <div className="flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-amber-500" />
+                    <span>Free Starter Plan: <strong>0 of 1 PDF Import Used</strong> (1 Free Conversion Available)</span>
+                  </div>
+                  {onOpenLicenseModal && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenLicenseModal();
+                      }}
+                      className="text-emerald-700 hover:text-emerald-900 font-bold underline cursor-pointer shrink-0"
+                    >
+                      Upgrade to Unlimited
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* STEP 1: Upload or Drop PDF */}
+              {!file && (
+                <div
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-3xl p-8 sm:p-12 text-center bg-white hover:bg-emerald-50/20 transition-all cursor-pointer group space-y-4 shadow-xs"
+                >
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
+                    accept=".pdf,application/pdf"
+                    className="hidden"
+                  />
+
+                  <div className="w-16 h-16 rounded-2xl bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center mx-auto group-hover:scale-110 transition-transform shadow-xs">
+                    <Upload className="w-8 h-8" />
+                  </div>
+
+                  <div className="space-y-1.5 max-w-md mx-auto">
+                    <h3 className="text-base sm:text-lg font-bold text-slate-900">
+                      Drag & Drop PDF document here
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Supports magazines, restaurant menus, product catalogs, portfolios, reports, and books.
+                    </p>
+                  </div>
+
+                  <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-md shadow-emerald-700/20">
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Browse Computer or Phone</span>
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           {/* STEP 2: PDF Inspect & Customization Settings */}

@@ -23,7 +23,7 @@ import {
   Crown,
 } from 'lucide-react';
 import { createInstantSharePackage, PublishResult } from '../utils/cloudPublisher';
-import { getLicenseInfo, onLicenseChange } from '../utils/licenseManager';
+import { getLicenseInfo, onLicenseChange, canExportHtml, onUsageChange } from '../utils/licenseManager';
 
 interface ShareExportHubProps {
   book: BookProject;
@@ -49,9 +49,20 @@ export const ShareExportHub: React.FC<ShareExportHubProps> = ({
   onOpenLicenseModal,
 }) => {
   const [license, setLicense] = useState(() => getLicenseInfo());
+  const [exportStatus, setExportStatus] = useState(() => canExportHtml());
 
   useEffect(() => {
-    return onLicenseChange((info) => setLicense(info));
+    const unsubLicense = onLicenseChange((info) => {
+      setLicense(info);
+      setExportStatus(canExportHtml());
+    });
+    const unsubUsage = onUsageChange(() => {
+      setExportStatus(canExportHtml());
+    });
+    return () => {
+      unsubLicense();
+      unsubUsage();
+    };
   }, []);
 
   const isPro = license.tier === 'pro';
@@ -366,44 +377,71 @@ export const ShareExportHub: React.FC<ShareExportHubProps> = ({
           {/* TAB: STANDALONE HTML (TOP RECOMMENDED) */}
           {activeTab === 'html' && (
             <div className="space-y-4 animate-in fade-in duration-150">
-              <div className="p-5 sm:p-6 rounded-2xl bg-gradient-to-br from-emerald-50 via-teal-50/50 to-white border-2 border-emerald-400 relative overflow-hidden space-y-4 shadow-sm">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-gradient-to-r from-amber-500 to-amber-600 text-amber-950 uppercase shadow-xs flex items-center gap-1">
-                      <Zap className="w-3 h-3 fill-amber-950 text-amber-950" />
-                      TOP RECOMMENDED
-                    </span>
-                    <h4 className="text-sm sm:text-base font-bold text-slate-900">Standalone Single-File 3D Flipbook</h4>
-                  </div>
-                  <span className="text-xs text-emerald-800 font-mono font-bold bg-emerald-100/80 px-2 py-0.5 rounded-md self-start sm:self-auto">
-                    100% Self-Contained
-                  </span>
-                </div>
-
-                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-xl">
-                  Bundles all book pages, sound effects, 3D turning physics, and mobile touch mechanics into a single lightweight <code className="bg-emerald-100 text-emerald-900 px-1.5 py-0.5 rounded font-bold text-xs">.html</code> file. 
-                  Zero setup or servers needed — just double-click to open & read on any phone, tablet, or PC!
-                </p>
-
-                <div className="pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                  <button
-                    onClick={onExportHtml}
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-extrabold text-sm shadow-lg shadow-emerald-700/25 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
-                  >
-                    <Download className="w-4 h-4 animate-bounce" />
-                    <span>Download Standalone .HTML File</span>
-                  </button>
-
-                  {isPro ? (
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-100/80 border border-emerald-300 text-emerald-900 text-xs font-bold">
-                      <Crown className="w-3.5 h-3.5 text-amber-600" />
-                      <span>100% White-Label (No Watermarks)</span>
-                    </div>
-                  ) : (
+              {!isPro && !exportStatus.allowed ? (
+                <div className="p-5 sm:p-6 rounded-2xl bg-amber-50/90 border-2 border-amber-300 relative overflow-hidden space-y-4 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-slate-500">
-                        Free plan includes a subtle brand badge.
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-200 text-amber-900 uppercase">
+                        LIMIT REACHED
                       </span>
+                      <h4 className="text-sm sm:text-base font-bold text-slate-900">1 of 1 Free HTML Export Used</h4>
+                    </div>
+                    <span className="text-xs text-amber-900 font-bold bg-amber-100 px-2.5 py-1 rounded-md border border-amber-300 self-start sm:self-auto">
+                      Free Plan Limit Reached
+                    </span>
+                  </div>
+
+                  <p className="text-xs sm:text-sm text-slate-700 leading-relaxed max-w-xl">
+                    You have already downloaded your <strong>1 free standalone HTML export</strong>. Upgrade to <strong>Pro Lifetime ($29)</strong> to download unlimited self-contained 3D flipbooks, 100% white-label with zero watermarks!
+                  </p>
+
+                  <div className="pt-2 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                    <a
+                      href="https://tabrej6.gumroad.com/l/3d-flipbook-pro"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-emerald-600 hover:from-amber-400 hover:to-emerald-500 text-slate-950 font-black text-sm shadow-md transition-all cursor-pointer group"
+                    >
+                      <Crown className="w-4 h-4 text-slate-950" />
+                      <span>Unlock Unlimited Exports ($29)</span>
+                      <ExternalLink className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                    </a>
+
+                    {onOpenLicenseModal && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onOpenLicenseModal();
+                        }}
+                        className="w-full sm:w-auto px-4 py-3 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 text-xs font-bold transition-all cursor-pointer"
+                      >
+                        Redeem Pro Key
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-5 sm:p-6 rounded-2xl bg-gradient-to-br from-emerald-50 via-teal-50/50 to-white border-2 border-emerald-400 relative overflow-hidden space-y-4 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-gradient-to-r from-amber-500 to-amber-600 text-amber-950 uppercase shadow-xs flex items-center gap-1">
+                        <Zap className="w-3 h-3 fill-amber-950 text-amber-950" />
+                        TOP RECOMMENDED
+                      </span>
+                      <h4 className="text-sm sm:text-base font-bold text-slate-900">Standalone Single-File 3D Flipbook</h4>
+                    </div>
+                    <span className="text-xs text-emerald-800 font-mono font-bold bg-emerald-100/80 px-2 py-0.5 rounded-md self-start sm:self-auto">
+                      100% Self-Contained
+                    </span>
+                  </div>
+
+                  {!isPro && (
+                    <div className="p-2.5 px-3 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 text-xs flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Crown className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Free Starter: <strong>0 of 1 Export Used</strong> (1 Free Download Available)</span>
+                      </div>
                       {onOpenLicenseModal && (
                         <button
                           type="button"
@@ -411,15 +449,55 @@ export const ShareExportHub: React.FC<ShareExportHubProps> = ({
                             onClose();
                             onOpenLicenseModal();
                           }}
-                          className="text-xs text-emerald-700 hover:text-emerald-800 font-bold underline cursor-pointer"
+                          className="font-bold underline text-amber-800 hover:text-amber-950 cursor-pointer shrink-0"
                         >
-                          Remove with Pro
+                          Go Unlimited
                         </button>
                       )}
                     </div>
                   )}
+
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-xl">
+                    Bundles all book pages, sound effects, 3D turning physics, and mobile touch mechanics into a single lightweight <code className="bg-emerald-100 text-emerald-900 px-1.5 py-0.5 rounded font-bold text-xs">.html</code> file. 
+                    Zero setup or servers needed — just double-click to open & read on any phone, tablet, or PC!
+                  </p>
+
+                  <div className="pt-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <button
+                      onClick={onExportHtml}
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-extrabold text-sm shadow-lg shadow-emerald-700/25 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                    >
+                      <Download className="w-4 h-4 animate-bounce" />
+                      <span>{isPro ? 'Download Standalone .HTML File' : 'Download Standalone .HTML (1 Free Export)'}</span>
+                    </button>
+
+                    {isPro ? (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-100/80 border border-emerald-300 text-emerald-900 text-xs font-bold">
+                        <Crown className="w-3.5 h-3.5 text-amber-600" />
+                        <span>100% White-Label (No Watermarks)</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-slate-500">
+                          Free includes watermark & 1 export limit.
+                        </span>
+                        {onOpenLicenseModal && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onClose();
+                              onOpenLicenseModal();
+                            }}
+                            className="text-xs text-emerald-700 hover:text-emerald-800 font-bold underline cursor-pointer"
+                          >
+                            Remove with Pro
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* WebApp / PWA Install Option */}
               {onOpenInstallModal && (

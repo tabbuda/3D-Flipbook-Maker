@@ -14,6 +14,8 @@ export interface LicenseInfo {
 export interface PlanLimits {
   maxBooks: number;
   maxPdfPages: number;
+  maxPdfImports: number;
+  maxExports: number;
   hasWatermark: boolean;
   whitelabelExport: boolean;
   highResExport: boolean;
@@ -21,7 +23,132 @@ export interface PlanLimits {
 }
 
 const STORAGE_KEY = 'flipbook_saas_license_v1';
+const FREE_USAGE_KEY = 'flipbook_free_usage_tracker_v1';
 const LICENSE_EVENT = 'flipbook_license_updated';
+const USAGE_EVENT = 'flipbook_usage_updated';
+
+export interface FreeUsageStats {
+  pdfImportsCount: number;
+  exportsCount: number;
+  maxFreePdfImports: number;
+  maxFreeExports: number;
+}
+
+/**
+ * Get current free tier usage statistics
+ */
+export function getFreeUsageStats(): FreeUsageStats {
+  const defaultStats: FreeUsageStats = {
+    pdfImportsCount: 0,
+    exportsCount: 0,
+    maxFreePdfImports: 1,
+    maxFreeExports: 1,
+  };
+
+  if (typeof window === 'undefined') return defaultStats;
+
+  try {
+    const raw = localStorage.getItem(FREE_USAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        ...defaultStats,
+        pdfImportsCount: typeof parsed.pdfImportsCount === 'number' ? parsed.pdfImportsCount : 0,
+        exportsCount: typeof parsed.exportsCount === 'number' ? parsed.exportsCount : 0,
+      };
+    }
+  } catch (e) {
+    // fallback
+  }
+
+  return defaultStats;
+}
+
+/**
+ * Checks if PDF import is allowed under the current plan
+ */
+export function canImportPdf(): { allowed: boolean; count: number; max: number; reason?: string } {
+  const license = getLicenseInfo();
+  if (license.tier === 'pro') {
+    return { allowed: true, count: 0, max: 9999 };
+  }
+  const stats = getFreeUsageStats();
+  if (stats.pdfImportsCount >= stats.maxFreePdfImports) {
+    return {
+      allowed: false,
+      count: stats.pdfImportsCount,
+      max: stats.maxFreePdfImports,
+      reason: 'Free Starter plan limit reached: You have used your 1 free PDF import. Upgrade to Pro for unlimited PDF conversions.',
+    };
+  }
+  return { allowed: true, count: stats.pdfImportsCount, max: stats.maxFreePdfImports };
+}
+
+/**
+ * Records a successful PDF import for free tier tracking
+ */
+export function recordPdfImport(): void {
+  const license = getLicenseInfo();
+  if (license.tier === 'pro') return;
+  const stats = getFreeUsageStats();
+  stats.pdfImportsCount += 1;
+  try {
+    localStorage.setItem(FREE_USAGE_KEY, JSON.stringify(stats));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(USAGE_EVENT, { detail: stats }));
+    }
+  } catch (e) {}
+}
+
+/**
+ * Checks if HTML export is allowed under the current plan
+ */
+export function canExportHtml(): { allowed: boolean; count: number; max: number; reason?: string } {
+  const license = getLicenseInfo();
+  if (license.tier === 'pro') {
+    return { allowed: true, count: 0, max: 9999 };
+  }
+  const stats = getFreeUsageStats();
+  if (stats.exportsCount >= stats.maxFreeExports) {
+    return {
+      allowed: false,
+      count: stats.exportsCount,
+      max: stats.maxFreeExports,
+      reason: 'Free Starter plan limit reached: You have already used your 1 free export. Upgrade to Pro for unlimited white-label exports.',
+    };
+  }
+  return { allowed: true, count: stats.exportsCount, max: stats.maxFreeExports };
+}
+
+/**
+ * Records an HTML export for free tier tracking
+ */
+export function recordExportHtml(): void {
+  const license = getLicenseInfo();
+  if (license.tier === 'pro') return;
+  const stats = getFreeUsageStats();
+  stats.exportsCount += 1;
+  try {
+    localStorage.setItem(FREE_USAGE_KEY, JSON.stringify(stats));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(USAGE_EVENT, { detail: stats }));
+    }
+  } catch (e) {}
+}
+
+/**
+ * Subscribe to free usage stats updates
+ */
+export function onUsageChange(callback: (stats: FreeUsageStats) => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+
+  const handler = (e: any) => {
+    callback(e.detail || getFreeUsageStats());
+  };
+
+  window.addEventListener(USAGE_EVENT, handler);
+  return () => window.removeEventListener(USAGE_EVENT, handler);
+}
 
 // Known lifetime VIP / Promo codes
 const RECOGNIZED_VIP_CODES = [
@@ -179,6 +306,8 @@ export function getPlanLimits(tier?: PlanTier): PlanLimits {
     return {
       maxBooks: 9999,
       maxPdfPages: 150, // Optimal for browser canvas memory
+      maxPdfImports: 9999, // Unlimited
+      maxExports: 9999, // Unlimited
       hasWatermark: false,
       whitelabelExport: true,
       highResExport: true,
@@ -189,6 +318,8 @@ export function getPlanLimits(tier?: PlanTier): PlanLimits {
   return {
     maxBooks: 3,
     maxPdfPages: 15, // Free tier limit to protect memory and drive conversions
+    maxPdfImports: 1, // Only 1 free PDF import
+    maxExports: 1, // Only 1 free HTML export
     hasWatermark: true,
     whitelabelExport: false,
     highResExport: false,

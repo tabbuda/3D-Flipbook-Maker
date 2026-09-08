@@ -250,18 +250,26 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
               </div>
 
               <div className="px-4 py-2.5 flex items-center justify-between bg-slate-50/50">
-                <span className="text-slate-700 font-medium">PDF Import Conversion</span>
+                <span className="text-slate-700 font-medium">PDF Document Imports</span>
                 <div className="flex items-center gap-4">
-                  <span className="w-16 text-center text-slate-500 font-mono">15 Pages</span>
-                  <span className="w-24 text-center text-emerald-700 font-bold font-mono">150+ Pages</span>
+                  <span className="w-16 text-center text-amber-700 font-bold font-mono">1 PDF Only</span>
+                  <span className="w-24 text-center text-emerald-700 font-bold font-mono">Unlimited ∞</span>
                 </div>
               </div>
 
               <div className="px-4 py-2.5 flex items-center justify-between">
-                <span className="text-slate-700 font-medium">Standalone Offline HTML Export</span>
+                <span className="text-slate-700 font-medium">Pages Per PDF File</span>
                 <div className="flex items-center gap-4">
-                  <span className="w-16 text-center text-slate-500">Included</span>
-                  <span className="w-24 text-center text-emerald-700 font-bold">Included</span>
+                  <span className="w-16 text-center text-slate-500 font-mono">15 Pages</span>
+                  <span className="w-24 text-center text-emerald-700 font-bold font-mono">150 Pages</span>
+                </div>
+              </div>
+
+              <div className="px-4 py-2.5 flex items-center justify-between bg-slate-50/50">
+                <span className="text-slate-700 font-medium">Standalone HTML Exports</span>
+                <div className="flex items-center gap-4">
+                  <span className="w-16 text-center text-amber-700 font-bold font-mono">1 Export Only</span>
+                  <span className="w-24 text-center text-emerald-700 font-bold font-mono">Unlimited ∞</span>
                 </div>
               </div>
 

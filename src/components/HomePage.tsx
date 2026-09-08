@@ -892,6 +892,12 @@ export const HomePage: React.FC<HomePageProps> = ({
 
                 <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4 pt-1 text-xs text-slate-300">
                   <span className="flex items-center gap-1.5">
+                    <Check className="w-4 h-4 text-emerald-400" /> Unlimited PDF Imports
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <Check className="w-4 h-4 text-emerald-400" /> Unlimited HTML Exports
+                  </span>
+                  <span className="flex items-center gap-1.5">
                     <Check className="w-4 h-4 text-emerald-400" /> 150 Pages per PDF
                   </span>
                   <span className="flex items-center gap-1.5">

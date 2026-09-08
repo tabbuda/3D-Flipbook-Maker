@@ -20,6 +20,7 @@ import { generateStandaloneFlipbookHtml, generateStandaloneFlipbookHtmlAsync } f
 import { usePWAInstall } from './hooks/usePWAInstall';
 import { loadActiveBook, saveActiveBook, getLibrary } from './utils/bookStorage';
 import { loadBookFromIndexedDB, saveBookToIndexedDB } from './utils/indexedDbStorage';
+import { canExportHtml, recordExportHtml } from './utils/licenseManager';
 
 export default function App() {
   // Initialize with last worked project from localStorage if exists
@@ -95,6 +96,13 @@ export default function App() {
 
   // One-Click Standalone HTML Export & Download with automatic Base64 packaging
   const handleExportHtml = async () => {
+    // Check Free Plan limit: only 1 free HTML export allowed!
+    const exportCheck = canExportHtml();
+    if (!exportCheck.allowed) {
+      setIsLicenseModalOpen(true);
+      return;
+    }
+
     try {
       setIsExportingHtml(true);
       const htmlContent = await generateStandaloneFlipbookHtmlAsync(book, 0);
@@ -107,6 +115,9 @@ export default function App() {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+      
+      // Track usage for free tier
+      recordExportHtml();
     } catch (err) {
       console.error('Failed to export HTML with Base64:', err);
     } finally {
