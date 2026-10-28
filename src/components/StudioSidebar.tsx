@@ -35,9 +35,16 @@ import {
   Eraser,
   Wand2,
   CheckCircle2,
-  FileJson,
+  FileText,
+  Loader2,
   Upload,
+  Undo2,
+  Redo2,
+  AlertTriangle,
+  Crown,
 } from 'lucide-react';
+import { exportBookToPdf } from '../utils/exportPdf';
+import { canExportHtml, recordExportHtml, getLicenseInfo } from '../utils/licenseManager';
 
 interface StudioSidebarProps {
   book: BookProject;
@@ -46,6 +53,11 @@ interface StudioSidebarProps {
   setActivePageIndex: (index: number) => void;
   onExportHtml: () => void;
   onOpenPdfModal?: () => void;
+  onOpenLicenseModal?: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
 }
 
 export const StudioSidebar: React.FC<StudioSidebarProps> = ({
@@ -55,11 +67,17 @@ export const StudioSidebar: React.FC<StudioSidebarProps> = ({
   setActivePageIndex,
   onExportHtml,
   onOpenPdfModal,
+  onOpenLicenseModal,
+  onUndo,
+  onRedo,
+  canUndo = false,
+  canRedo = false,
 }) => {
   const [activeTab, setActiveTab] = useState<'pages' | 'editor' | 'theme' | 'export'>('editor');
   const [showAddComponentModal, setShowAddComponentModal] = useState<boolean>(false);
   const [showTemplatePicker, setShowTemplatePicker] = useState<boolean>(false);
-  const [copiedEmbed, setCopiedEmbed] = useState<boolean>(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
+  const [pdfProgressText, setPdfProgressText] = useState<string>('');
 
   const activePage = book.pages[activePageIndex] || book.pages[0];
 
@@ -309,51 +327,186 @@ export const StudioSidebar: React.FC<StudioSidebarProps> = ({
   const isCoverBack =
     activePageIndex === book.pages.length - 1 || activePage.template === 'cover-back';
 
+  // Estimate page content height (A4 printable body budget ~ 530px)
+  const estimateBlockHeight = (b: PageBlock): number => {
+    switch (b.type) {
+      case 'chapter-header':
+        return 76;
+      case 'heading-1':
+        return 46;
+      case 'heading-2':
+        return 36;
+      case 'heading-3':
+        return 28;
+      case 'subtitle':
+        return 32;
+      case 'paragraph':
+      case 'dropcap-paragraph': {
+        const len = (b.paragraph1 || '').length;
+        return Math.max(42, Math.ceil(len / 56) * 19 + 14);
+      }
+      case 'two-column-text': {
+        const maxCol = Math.max((b.paragraph1 || '').length, (b.paragraph2 || '').length);
+        return Math.max(58, Math.ceil(maxCol / 28) * 18 + 16);
+      }
+      case 'quote-block': {
+        const qLen = (b.quoteText || '').length;
+        return Math.max(68, Math.ceil(qLen / 48) * 20 + 28);
+      }
+      case 'grid-cards': {
+        const rows = Math.ceil(Math.max(1, (b.items || []).length) / 2);
+        return (b.title ? 26 : 0) + rows * 84;
+      }
+      case 'feature-cards':
+      case 'numbered-steps':
+        return (b.title ? 24 : 0) + Math.max(1, (b.items || []).length) * 52;
+      case 'checklist-block':
+        return Math.max(1, (b.items || []).length) * 28 + 12;
+      case 'table-specs':
+        return (b.title ? 24 : 0) + Math.max(1, (b.items || []).length) * 30 + 12;
+      case 'image-block':
+        return b.imageSize === 'small' ? 115 : b.imageSize === 'medium' ? 155 : 210;
+      case 'image-full-fit':
+        return 440;
+      case 'image-text-split':
+        return 145;
+      case 'author-card':
+        return 92;
+      case 'callout-box':
+        return 78;
+      case 'button-cta':
+        return 46;
+      case 'divider-ornament':
+        return 26;
+      case 'barcode-imprint':
+        return 72;
+      default:
+        return 55;
+    }
+  };
+
+  const MAX_SAFE_PAGE_HEIGHT = 530;
+  const estimatedPageHeight =
+    !isCoverFront && !isCoverBack
+      ? currentBlocks.reduce((acc, b) => acc + estimateBlockHeight(b), 0)
+      : 0;
+  const pageCapacityPercent = Math.min(
+    999,
+    Math.round((estimatedPageHeight / MAX_SAFE_PAGE_HEIGHT) * 100)
+  );
+  const isPageOverflowing = !isCoverFront && !isCoverBack && pageCapacityPercent > 100;
+
+  // One-click helper to move the overflowing last block onto the next page
+  const handleMoveLastBlockToNextPage = () => {
+    if (currentBlocks.length === 0) return;
+    const blockToMove = currentBlocks[currentBlocks.length - 1];
+    const remainingBlocks = currentBlocks.slice(0, -1);
+
+    setBook((prev) => {
+      const pages = [...prev.pages];
+      pages[activePageIndex] = {
+        ...pages[activePageIndex],
+        blocks: remainingBlocks,
+      };
+
+      const nextIdx = activePageIndex + 1;
+      const nextPage = pages[nextIdx];
+
+      if (nextPage && nextPage.template !== 'cover-back') {
+        const nextBlocks = getPageBlocks(nextPage);
+        pages[nextIdx] = {
+          ...nextPage,
+          blocks: [blockToMove, ...nextBlocks],
+        };
+      } else {
+        // Insert a new page before back cover and place the moved block there
+        const newPage: PageContent = {
+          id: `p-${Date.now()}`,
+          template: 'blank',
+          headerTag: activePage.headerTag || prev.title,
+          blocks: [blockToMove],
+        };
+        const insertAt = nextPage?.template === 'cover-back' ? nextIdx : pages.length;
+        pages.splice(insertAt, 0, newPage);
+      }
+
+      return { ...prev, pages };
+    });
+  };
+
   return (
-    <div className="w-full h-full flex flex-col bg-white border-r border-slate-200 text-slate-800 overflow-hidden select-none">
-      {/* Studio Header */}
-      <div className="p-3.5 sm:p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-emerald-100 border border-emerald-300 flex items-center justify-center text-emerald-700 shadow-xs">
-            <BookOpen className="w-4 h-4" />
+    <div className="w-full h-full flex flex-col bg-white border-r border-slate-200/90 text-slate-800 overflow-hidden select-none">
+      {/* Studio Sidebar Header */}
+      <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between bg-[#FAFAFA] gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-7 h-7 rounded-md bg-slate-950 flex items-center justify-center text-emerald-400 shrink-0">
+            <BookOpen className="w-3.5 h-3.5" />
           </div>
-          <div>
-            <h2 className="text-sm font-bold text-slate-900 leading-tight">
-              Flipbook Creator Studio
+          <div className="min-w-0">
+            <h2 className="text-xs sm:text-sm font-bold text-slate-950 leading-tight truncate">
+              {book.title || 'Untitled Publication'}
             </h2>
-            <p className="text-[10.5px] text-slate-500">Modular Component Engine</p>
+            <p className="text-[10px] font-mono-code text-slate-500 truncate">
+              {book.pages.length} Pages · Studio Editor
+            </p>
           </div>
         </div>
 
-        <button
-          onClick={onExportHtml}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
-        >
-          <Download className="w-3.5 h-3.5" />
-          <span>Export HTML</span>
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Undo & Redo Controls */}
+          {onUndo && (
+            <div className="flex items-center bg-white border border-slate-200 rounded-lg p-0.5 shadow-2xs">
+              <button
+                type="button"
+                onClick={onUndo}
+                disabled={!canUndo}
+                title="Undo (Ctrl+Z)"
+                className="p-1.5 rounded-md text-slate-600 hover:text-slate-950 hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
+              >
+                <Undo2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={onRedo}
+                disabled={!canRedo}
+                title="Redo (Ctrl+Y)"
+                className="p-1.5 rounded-md text-slate-600 hover:text-slate-950 hover:bg-slate-100 disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
+              >
+                <Redo2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          <button
+            onClick={onExportHtml}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>HTML</span>
+          </button>
+        </div>
       </div>
 
       {/* Navigation Tabs */}
-      <div className="flex border-b border-slate-200 bg-slate-100 p-1 gap-1">
+      <div className="grid grid-cols-4 border-b border-slate-200 bg-slate-100/80 p-1 gap-1">
         <button
           onClick={() => setActiveTab('editor')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+          className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
             activeTab === 'editor'
-              ? 'bg-white text-emerald-700 shadow-xs border border-slate-200'
-              : 'text-slate-600 hover:text-slate-900'
+              ? 'bg-slate-950 text-white shadow-2xs'
+              : 'text-slate-600 hover:text-slate-950'
           }`}
         >
           <Type className="w-3.5 h-3.5" />
-          <span>Edit Page</span>
+          <span>Content</span>
         </button>
 
         <button
           onClick={() => setActiveTab('pages')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+          className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
             activeTab === 'pages'
-              ? 'bg-white text-emerald-700 shadow-xs border border-slate-200'
-              : 'text-slate-600 hover:text-slate-900'
+              ? 'bg-slate-950 text-white shadow-2xs'
+              : 'text-slate-600 hover:text-slate-950'
           }`}
         >
           <Layers className="w-3.5 h-3.5" />
@@ -362,31 +515,31 @@ export const StudioSidebar: React.FC<StudioSidebarProps> = ({
 
         <button
           onClick={() => setActiveTab('theme')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+          className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
             activeTab === 'theme'
-              ? 'bg-white text-emerald-700 shadow-xs border border-slate-200'
-              : 'text-slate-600 hover:text-slate-900'
+              ? 'bg-slate-950 text-white shadow-2xs'
+              : 'text-slate-600 hover:text-slate-950'
           }`}
         >
           <Palette className="w-3.5 h-3.5" />
-          <span>Themes</span>
+          <span>Style</span>
         </button>
 
         <button
           onClick={() => setActiveTab('export')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+          className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
             activeTab === 'export'
-              ? 'bg-white text-emerald-700 shadow-xs border border-slate-200'
-              : 'text-slate-600 hover:text-slate-900'
+              ? 'bg-slate-950 text-white shadow-2xs'
+              : 'text-slate-600 hover:text-slate-950'
           }`}
         >
           <FileCode className="w-3.5 h-3.5" />
-          <span>Publish</span>
+          <span>Export</span>
         </button>
       </div>
 
       {/* Main Tab Body */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-3.5 sm:p-4 space-y-4">
         {/* ========================================================
             TAB 1: EDIT PAGE (The requested component-driven editor)
            ======================================================== */}
@@ -447,7 +600,7 @@ export const StudioSidebar: React.FC<StudioSidebarProps> = ({
 
               {/* Status Header & Controls */}
               <div className="flex items-center justify-between pt-2 border-t border-slate-200 text-xs">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-[11px] font-mono text-slate-500">
                     {isCoverFront
                       ? 'Front Cover'
@@ -462,6 +615,18 @@ export const StudioSidebar: React.FC<StudioSidebarProps> = ({
                           currentBlocks.length === 1 ? 'Component' : 'Components'
                         }`}
                   </span>
+                  {!isCoverFront && !isCoverBack && currentBlocks.length > 0 && (
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold border ${
+                        isPageOverflowing
+                          ? 'bg-amber-100 border-amber-300 text-amber-900'
+                          : 'bg-slate-100 border-slate-200 text-slate-600'
+                      }`}
+                      title="Estimated vertical page space used"
+                    >
+                      {pageCapacityPercent}% Full
+                    </span>
+                  )}
                 </div>
 
                 {!isCoverFront && !isCoverBack && currentBlocks.length > 0 && (
@@ -477,6 +642,29 @@ export const StudioSidebar: React.FC<StudioSidebarProps> = ({
                 )}
               </div>
             </div>
+
+            {/* PAGE OVERFLOW WARNING BANNER */}
+            {isPageOverflowing && (
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 space-y-2 shadow-2xs animate-in fade-in duration-150">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="text-[11px] leading-relaxed">
+                    <span className="font-bold text-amber-900">
+                      Page Overflow Warning ({pageCapacityPercent}% Full):
+                    </span>{' '}
+                    This page has more content than a fixed A4 leaf can fit, so bottom text may get clipped.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleMoveLastBlockToNextPage}
+                  className="w-full py-1.5 px-3 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  <span>Move Last Component to Next Page</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
 
             {/* FRONT COVER SPECIAL FIELDS */}
             {isCoverFront ? (
@@ -864,10 +1052,78 @@ export const StudioSidebar: React.FC<StudioSidebarProps> = ({
         )}
 
         {/* ========================================================
-            TAB 3: THEME & AESTHETICS (Luxury Cover Themes)
+            TAB 3: THEME & AESTHETICS (White-Label Brand + Cover Themes)
            ======================================================== */}
         {activeTab === 'theme' && (
           <div className="space-y-4">
+            {/* Pro White-Label Custom Brand Logo & Link Card */}
+            <div className="p-3.5 rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50/70 via-white to-slate-50 space-y-3 shadow-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-extrabold text-slate-900">
+                  <Crown className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Custom Brand Logo &amp; Link</span>
+                </div>
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase">
+                  WHITE-LABEL
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                Display your own company logo, brand name, and clickable website link on the top-left of your 3D Flipbook &amp; exported HTML/PDF.
+              </p>
+
+              {getLicenseInfo().tier === 'pro' ? (
+                <div className="space-y-2.5 pt-1">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                      Brand / Company Name
+                    </label>
+                    <input
+                      type="text"
+                      value={book.customBrandName || ''}
+                      onChange={(e) =>
+                        setBook((prev) => ({ ...prev, customBrandName: e.target.value }))
+                      }
+                      placeholder="e.g. Acme Studio"
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                      Brand Website Link (URL)
+                    </label>
+                    <input
+                      type="url"
+                      value={book.customBrandUrl || ''}
+                      onChange={(e) =>
+                        setBook((prev) => ({ ...prev, customBrandUrl: e.target.value }))
+                      }
+                      placeholder="https://yourwebsite.com"
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono text-slate-800 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <ImageInputControl
+                      value={book.customBrandLogo || ''}
+                      onChange={(val) =>
+                        setBook((prev) => ({ ...prev, customBrandLogo: val }))
+                      }
+                      label="Brand Logo Image (PNG / SVG / JPG)"
+                      placeholder="Upload or paste logo URL..."
+                    />
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onOpenLicenseModal && onOpenLicenseModal()}
+                  className="w-full py-2 px-3 rounded-lg bg-gradient-to-r from-amber-500 to-emerald-600 hover:from-amber-400 hover:to-emerald-500 text-slate-950 font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer transition-all"
+                >
+                  <Crown className="w-3.5 h-3.5" />
+                  <span>Unlock Custom Branding (Pro Lifetime)</span>
+                </button>
+              )}
+            </div>
+
             <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
               Luxury Cover Themes
             </span>
@@ -924,19 +1180,23 @@ export const StudioSidebar: React.FC<StudioSidebarProps> = ({
         )}
 
         {/* ========================================================
-            TAB 4: PUBLISH & EXPORT
+            TAB 4: EXPORT (ONLY 2 OPTIONS: 1. HTML, 2. PDF)
            ======================================================== */}
         {activeTab === 'export' && (
           <div className="space-y-4 text-xs">
-            {/* HTML Export Card */}
+            {/* Option 1: HTML Export Card */}
             <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/70 space-y-2.5 shadow-xs">
-              <div className="flex items-center gap-2 font-bold text-sm text-emerald-800">
-                <Download className="w-4 h-4" />
-                <span>Standalone Single-File HTML</span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-bold text-sm text-emerald-800">
+                  <FileCode className="w-4 h-4" />
+                  <span>1. Export HTML</span>
+                </div>
+                <span className="px-2 py-0.5 rounded text-[9px] font-extrabold bg-emerald-600 text-white uppercase">
+                  3D FLIPBOOK
+                </span>
               </div>
               <p className="text-slate-700 leading-relaxed text-[11px]">
-                Exports your entire 3D book project with embedded procedural Web Audio, CSS 3D
-                transforms, and responsive touch gestures. Zero external dependencies required.
+                Downloads your interactive 3D flipbook with realistic page-turning physics, desktop & mobile support, and sound effects in a single <code className="font-bold">.html</code> file.
               </p>
               <button
                 type="button"
@@ -948,58 +1208,57 @@ export const StudioSidebar: React.FC<StudioSidebarProps> = ({
               </button>
             </div>
 
-            {/* iFrame Embed Code */}
-            <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
+            {/* Option 2: PDF Export Card */}
+            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-2.5 shadow-xs">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-800">Website Embed Code</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(iframeEmbedCode);
-                    setCopiedEmbed(true);
-                    setTimeout(() => setCopiedEmbed(false), 2000);
-                  }}
-                  className="flex items-center gap-1 text-[10px] text-emerald-700 hover:underline cursor-pointer font-bold"
-                >
-                  {copiedEmbed ? (
-                    <>
-                      <Check className="w-3 h-3" /> Copied
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3 h-3" /> Copy
-                    </>
-                  )}
-                </button>
+                <div className="flex items-center gap-2 font-bold text-sm text-slate-900">
+                  <FileText className="w-4 h-4 text-emerald-600" />
+                  <span>2. Export PDF</span>
+                </div>
+                <span className="px-2 py-0.5 rounded text-[9px] font-extrabold bg-slate-200 text-slate-800 uppercase">
+                  ALL {book.pages.length} PAGES
+                </span>
               </div>
-              <pre className="p-2.5 rounded-lg bg-white border border-slate-200 font-mono text-[10px] text-slate-800 overflow-x-auto whitespace-pre-wrap">
-                {iframeEmbedCode}
-              </pre>
-            </div>
-
-            {/* Backup & Restore JSON */}
-            <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2.5">
-              <span className="font-bold text-slate-800 block">Project Backup & Sync</span>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={handleDownloadJson}
-                  className="py-2 px-3 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-                >
-                  <FileJson className="w-3.5 h-3.5" />
-                  <span>Save JSON</span>
-                </button>
-                <label className="py-2 px-3 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer text-center shadow-xs">
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Load JSON</span>
-                  <input
-                    type="file"
-                    accept=".json"
-                    onChange={handleImportJson}
-                    className="hidden"
-                  />
-                </label>
-              </div>
+              <p className="text-slate-600 leading-relaxed text-[11px]">
+                Compiles all {book.pages.length} pages of your book into a Native Vector Digital <code className="font-bold">.pdf</code> with selectable text, clickable links, and vector shapes.
+              </p>
+              <button
+                type="button"
+                disabled={isGeneratingPdf}
+                onClick={async () => {
+                  const exportCheck = canExportHtml();
+                  if (!exportCheck.allowed) {
+                    if (onOpenLicenseModal) {
+                      onOpenLicenseModal();
+                    }
+                    return;
+                  }
+                  setIsGeneratingPdf(true);
+                  setPdfProgressText('Preparing PDF...');
+                  try {
+                    await exportBookToPdf(book, (prog) => {
+                      setPdfProgressText(`Page ${prog.currentPage}/${prog.totalPages}...`);
+                    });
+                    recordExportHtml();
+                  } finally {
+                    setIsGeneratingPdf(false);
+                    setPdfProgressText('');
+                  }
+                }}
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white font-bold shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {isGeneratingPdf ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+                    <span>Generating PDF ({pdfProgressText})</span>
+                  </>
+                ) : (
+                  <>
+                    <FileText className="w-4 h-4 text-emerald-400" />
+                    <span>Download Complete Book .PDF</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         )}

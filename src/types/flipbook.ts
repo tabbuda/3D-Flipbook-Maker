@@ -314,6 +314,9 @@ export interface BookProject {
   orientation?: 'portrait' | 'landscape' | 'square';
   pageWidth?: number;
   pageHeight?: number;
+  customBrandLogo?: string;
+  customBrandName?: string;
+  customBrandUrl?: string;
 }
 
 export type TemplateCategory =

@@ -114,14 +114,14 @@ export function canExportHtml(): { allowed: boolean; count: number; max: number;
       allowed: false,
       count: stats.exportsCount,
       max: stats.maxFreeExports,
-      reason: 'Free Starter plan limit reached: You have already used your 1 free export. Upgrade to Pro for unlimited white-label exports.',
+      reason: 'Free Starter plan limit reached: You have already used your 1 free book export (HTML or PDF). Upgrade to Pro for unlimited white-label exports.',
     };
   }
   return { allowed: true, count: stats.exportsCount, max: stats.maxFreeExports };
 }
 
 /**
- * Records an HTML export for free tier tracking
+ * Records an HTML or PDF export for free tier tracking
  */
 export function recordExportHtml(): void {
   const license = getLicenseInfo();
@@ -150,69 +150,152 @@ export function onUsageChange(callback: (stats: FreeUsageStats) => void): () => 
   return () => window.removeEventListener(USAGE_EVENT, handler);
 }
 
-// Known lifetime VIP / Promo codes
+// Secret Owner Key & Authorized VIP codes
 const RECOGNIZED_VIP_CODES = [
-  'PRO-LIFETIME-2026',
-  'APPSUMO-LIFETIME',
-  'SUMO-VIP-2026',
-  'FLIPBOOK-PRO-LTD',
-  'VIP-LIFETIME',
-  'EARLY-ADOPTER',
+  'TABREJ-OWNER-9999',
+  'APPSUMO-LIFETIME-VIP',
+  'FLIPBOOK-LTD-MASTER',
 ];
 
+// Block obvious placeholder / example keys shown in UI or guessed by users
+const BLOCKED_EXAMPLE_KEYS = new Set([
+  'A1B2C3D4-E5F6-7890-ABCD-1234567890EF',
+  '00000000-0000-0000-0000-000000000000',
+  '11111111-1111-1111-1111-111111111111',
+  '12345678-1234-1234-1234-123456789012',
+  'AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA',
+  'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX',
+]);
+
+export const GUMROAD_CHECKOUT_URL = 'https://tabrej6.gumroad.com/l/3d-flipbook-pro';
+export const GUMROAD_PRODUCT_PERMALINK = '3d-flipbook-pro';
+
 /**
- * Validates whether a key looks like a valid AppSumo or Pro License code
- * Examples:
- * - AS-8924-KLA2-901B
- * - AS-XXXX-XXXX
- * - FLIP-7821-MB82-9901
- * - Known VIP promo codes
+ * Validates whether a key is the Secret Owner Key, a valid Gumroad UUID key, or an AppSumo voucher
  */
-export function validateLicenseFormat(rawKey: string): { isValid: boolean; source: 'appsumo' | 'direct' | 'promo'; cleanKey: string } {
+export function validateLicenseFormat(rawKey: string): { isValid: boolean; source: 'appsumo' | 'direct' | 'promo'; cleanKey: string; errorReason?: string } {
   const cleanKey = rawKey.trim().toUpperCase();
 
   if (!cleanKey) {
-    return { isValid: false, source: 'direct', cleanKey };
+    return { isValid: false, source: 'direct', cleanKey, errorReason: 'Please enter a license key.' };
   }
 
-  // 1. Check known VIP Promo codes
+  if (BLOCKED_EXAMPLE_KEYS.has(cleanKey)) {
+    return {
+      isValid: false,
+      source: 'direct',
+      cleanKey,
+      errorReason: 'This is a sample placeholder key. Please enter your actual Gumroad purchase key.',
+    };
+  }
+
+  // 1. Check Secret Owner Key & VIP codes
   if (RECOGNIZED_VIP_CODES.includes(cleanKey)) {
     return { isValid: true, source: 'promo', cleanKey };
   }
 
-  // 2. Check Gumroad prefix or standard Gumroad license key formats (UUID or 4-part / 5-part keys)
-  if (cleanKey.startsWith('GUM-') || cleanKey.startsWith('PRO-')) {
+  // 2. Standard Gumroad hexadecimal UUID license format (8-4-4-4-12 hex digits)
+  const hexUuidPattern = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/;
+  if (hexUuidPattern.test(cleanKey)) {
+    // Reject low-entropy fake keys (e.g. fewer than 6 unique characters)
+    const uniqueChars = new Set(cleanKey.replace(/-/g, '').split('')).size;
+    if (uniqueChars < 6) {
+      return {
+        isValid: false,
+        source: 'direct',
+        cleanKey,
+        errorReason: 'Invalid Gumroad license key signature.',
+      };
+    }
     return { isValid: true, source: 'direct', cleanKey };
   }
 
-  // Standard UUID license format (e.g., A1B2C3D4-E5F6-7890-ABCD-1234567890EF)
-  const uuidPattern = /^[A-Z0-9]{8}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{12}$/;
-  if (uuidPattern.test(cleanKey)) {
+  // 3. Gumroad 4-segment hexadecimal license format (e.g., XXXXXXXX-XXXXXXXX-XXXXXXXX-XXXXXXXX)
+  const gumroadFourSegment = /^[0-9A-F]{8}(-[0-9A-F]{8}){3}$/;
+  if (gumroadFourSegment.test(cleanKey)) {
+    const uniqueChars = new Set(cleanKey.replace(/-/g, '').split('')).size;
+    if (uniqueChars < 6) {
+      return {
+        isValid: false,
+        source: 'direct',
+        cleanKey,
+        errorReason: 'Invalid Gumroad license key signature.',
+      };
+    }
     return { isValid: true, source: 'direct', cleanKey };
   }
 
-  // 3. Check AppSumo Prefix code (AS-XXXX-XXXX or AS-XXXX-XXXX-XXXX)
-  if (cleanKey.startsWith('AS-') && cleanKey.length >= 8) {
+  // 4. Check AppSumo Prefix code (AS-XXXX-XXXX-XXXX)
+  if (/^AS-[A-Z0-9]{4,8}(-[A-Z0-9]{4,8}){2,3}$/.test(cleanKey)) {
     return { isValid: true, source: 'appsumo', cleanKey };
   }
 
-  // 4. Check Standard Flipbook Pro Key (FLIP-XXXX-XXXX or 10+ chars alphanumeric with hyphens)
-  if (cleanKey.startsWith('FLIP-') && cleanKey.length >= 10) {
-    return { isValid: true, source: 'direct', cleanKey };
+  return {
+    isValid: false,
+    source: 'direct',
+    cleanKey,
+    errorReason: 'Invalid license key format. Please copy the exact 36-character key from your Gumroad receipt.',
+  };
+}
+
+/**
+ * Verifies a license key against Gumroad's Official License Verification API
+ * while always allowing the Secret Owner Key (TABREJ-OWNER-9999) immediately.
+ */
+export async function verifyAndActivateLicenseAsync(
+  rawKey: string
+): Promise<{ success: boolean; message: string; info?: LicenseInfo }> {
+  const check = validateLicenseFormat(rawKey);
+  if (!check.isValid) {
+    return {
+      success: false,
+      message: check.errorReason || 'Invalid license key format. Please check your Gumroad receipt.',
+    };
   }
 
-  // 5. Check general multi-segment code patterns (e.g. XXXX-XXXX-XXXX or XXXX-XXXX-XXXX-XXXX)
-  const codePattern = /^[A-Z0-9]{3,8}(-[A-Z0-9]{3,8}){1,4}$/;
-  if (codePattern.test(cleanKey)) {
-    return { isValid: true, source: 'direct', cleanKey };
+  // Secret Owner Key & VIP codes bypass remote API check immediately
+  if (RECOGNIZED_VIP_CODES.includes(check.cleanKey)) {
+    return activateLicense(check.cleanKey);
   }
 
-  // Fallback: any valid alphanumeric key at least 10 chars long
-  if (/^[A-Z0-9]{10,36}$/.test(cleanKey)) {
-    return { isValid: true, source: 'direct', cleanKey };
+  // Verify with Gumroad v2 License API
+  try {
+    const response = await fetch('https://api.gumroad.com/v2/licenses/verify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        product_permalink: GUMROAD_PRODUCT_PERMALINK,
+        license_key: check.cleanKey,
+        increment_uses_count: 'true',
+      }).toString(),
+    });
+
+    const data = await response.json().catch(() => null);
+
+    if (data && data.success === true) {
+      if (data.purchase?.refunded || data.purchase?.chargebacked) {
+        return {
+          success: false,
+          message: 'This license key has been refunded or cancelled.',
+        };
+      }
+      return activateLicense(check.cleanKey);
+    }
+
+    // If Gumroad explicitly says the license key does not exist for a live product
+    if (data && data.success === false && data.message && !data.message.toLowerCase().includes('product')) {
+      return {
+        success: false,
+        message: 'License key not found on Gumroad. Please check your purchase receipt or buy a Pro Lifetime key.',
+      };
+    }
+  } catch (networkErr) {
+    // Offline fallback if browser blocks third-party call or user is offline
   }
 
-  return { isValid: false, source: 'direct', cleanKey };
+  return activateLicense(check.cleanKey);
 }
 
 /**
@@ -234,8 +317,13 @@ export function getLicenseInfo(): LicenseInfo {
         tier: 'pro',
         key: parsed.key,
         activatedAt: parsed.activatedAt,
-        planName: parsed.source === 'appsumo' ? 'AppSumo Pro Lifetime' : 'Pro Lifetime License',
-        source: parsed.source || 'appsumo',
+        planName:
+          parsed.key === 'TABREJ-OWNER-9999'
+            ? 'Owner Master License'
+            : parsed.source === 'appsumo'
+            ? 'AppSumo Pro Lifetime'
+            : 'Pro Lifetime License',
+        source: parsed.source || 'direct',
       };
     }
   } catch (e) {
@@ -254,7 +342,7 @@ export function activateLicense(rawKey: string): { success: boolean; message: st
   if (!check.isValid) {
     return {
       success: false,
-      message: 'Invalid code format. Please check your AppSumo voucher or lifetime license code.',
+      message: check.errorReason || 'Invalid code format. Please check your Gumroad license key.',
     };
   }
 
@@ -262,7 +350,12 @@ export function activateLicense(rawKey: string): { success: boolean; message: st
     tier: 'pro',
     key: check.cleanKey,
     activatedAt: new Date().toISOString(),
-    planName: check.source === 'appsumo' ? 'AppSumo Pro Lifetime' : 'Pro Lifetime License',
+    planName:
+      check.cleanKey === 'TABREJ-OWNER-9999'
+        ? 'Owner Master License'
+        : check.source === 'appsumo'
+        ? 'AppSumo Pro Lifetime'
+        : 'Pro Lifetime License',
     source: check.source,
   };
 

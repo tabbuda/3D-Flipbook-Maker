@@ -60,6 +60,51 @@ export const PageRenderer: React.FC<PageRendererProps> = ({
     );
   }
 
+  // Helper: Subtle architectural thin circle ornament (Left page = Top circle, Right page = Bottom-Right circle)
+  const isLeftPage = pageNumber % 2 === 0;
+  const isDarkPageBg = /^#(0|1|2)/i.test((theme.pageBg || '').trim());
+  const circleStrokeColor = isDarkPageBg
+    ? 'rgba(255, 255, 255, 0.22)'
+    : 'rgba(15, 23, 42, 0.25)';
+
+  const renderSubtlePageGeometry = () => {
+    if (page.template === 'cover-front' || page.template === 'cover-back') return null;
+    return (
+      <div
+        data-pdf-ornament-circle="true"
+        className="absolute inset-0 overflow-hidden pointer-events-none select-none z-[5]"
+      >
+        {isLeftPage ? (
+          /* Left Page: Thin delicate circle at the top (clipped by top edge, matching screenshot) */
+          <div
+            data-pdf-ornament-circle="true"
+            className="absolute rounded-full pointer-events-none"
+            style={{
+              width: '56%',
+              aspectRatio: '1 / 1',
+              top: '-16%',
+              right: '10%',
+              border: `1px solid ${circleStrokeColor}`,
+            }}
+          />
+        ) : (
+          /* Right Page: Thin delicate circle at the bottom-right corner (clipped by bottom & right edges) */
+          <div
+            data-pdf-ornament-circle="true"
+            className="absolute rounded-full pointer-events-none"
+            style={{
+              width: '58%',
+              aspectRatio: '1 / 1',
+              bottom: '-18%',
+              right: '-12%',
+              border: `1px solid ${circleStrokeColor}`,
+            }}
+          />
+        )}
+      </div>
+    );
+  };
+
   // 0. FULL BLEED PDF / DOCUMENT PAGE RENDERING
   if (
     page.template === 'pdf-page' ||
@@ -74,6 +119,7 @@ export const PageRenderer: React.FC<PageRendererProps> = ({
           margin: 0,
         }}
       >
+        {renderSubtlePageGeometry()}
         {page.imageUrl ? (
           <div className="relative w-full h-full flex items-center justify-center overflow-hidden bg-white">
             <img
@@ -120,13 +166,14 @@ export const PageRenderer: React.FC<PageRendererProps> = ({
           color: theme.pageTextColor,
         }}
       >
-        <div className="text-[9px] uppercase tracking-widest opacity-35 font-mono">
+        {renderSubtlePageGeometry()}
+        <div className="text-[9px] uppercase tracking-widest opacity-35 font-mono relative z-10">
           {page.headerTag || bookTitle}
         </div>
-        <div className="my-auto opacity-20 flex flex-col items-center">
+        <div className="my-auto opacity-20 flex flex-col items-center relative z-10">
           <Sparkles className="w-8 h-8" style={{ color: theme.accentColor }} />
         </div>
-        <div className="text-[9px] uppercase tracking-widest opacity-35 font-mono">
+        <div className="text-[9px] uppercase tracking-widest opacity-35 font-mono relative z-10">
           Page {pageNumber}
         </div>
       </div>
@@ -143,9 +190,11 @@ export const PageRenderer: React.FC<PageRendererProps> = ({
           color: theme.pageTextColor,
         }}
       >
+        {renderSubtlePageGeometry()}
+
         {/* Header Tag */}
         <div
-          className="flex justify-between items-center pb-1.5 mb-2 text-[9px] font-bold tracking-[1.5px] uppercase opacity-60 shrink-0"
+          className="flex justify-between items-center pb-1.5 mb-2 text-[9px] font-bold tracking-[1.5px] uppercase opacity-60 shrink-0 relative z-10"
           style={{
             borderBottom: `1px solid ${theme.borderColor || 'rgba(0,0,0,0.08)'}`,
             color: theme.accentColor || '#64748b',
@@ -156,7 +205,7 @@ export const PageRenderer: React.FC<PageRendererProps> = ({
         </div>
 
         {/* Content Blocks */}
-        <div className="flex-1 overflow-hidden flex flex-col justify-center space-y-1">
+        <div className="flex-1 overflow-hidden flex flex-col justify-center space-y-1 relative z-10">
           {page.blocks.map((block) => (
             <PageBlockRenderer
               key={block.id}
@@ -170,7 +219,7 @@ export const PageRenderer: React.FC<PageRendererProps> = ({
 
         {/* Footer */}
         <div
-          className="flex justify-between items-center pt-1.5 mt-2 text-[8.5px] tracking-wider uppercase opacity-40 font-mono shrink-0 border-t border-black/5"
+          className="flex justify-between items-center pt-1.5 mt-2 text-[8.5px] tracking-wider uppercase opacity-40 font-mono shrink-0 border-t border-black/5 relative z-10"
           style={{ color: theme.pageTextColor }}
         >
           <span>{bookAuthor}</span>
@@ -206,6 +255,23 @@ export const PageRenderer: React.FC<PageRendererProps> = ({
               display: 'block',
             }}
           />
+          {/* Realistic 3D Hardcover Spine Hinge Groove & Bevel */}
+          <div
+            className="absolute inset-y-0 left-0 w-[22px] pointer-events-none z-10"
+            style={{
+              background:
+                'linear-gradient(to right, rgba(0,0,0,0.45) 0%, rgba(255,255,255,0.25) 18%, rgba(0,0,0,0.04) 40%, rgba(0,0,0,0.38) 68%, rgba(255,255,255,0.22) 82%, transparent 100%)',
+            }}
+          />
+          <div
+            className="absolute inset-0 pointer-events-none z-10"
+            style={{
+              background:
+                'linear-gradient(130deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.03) 28%, rgba(0,0,0,0) 55%, rgba(0,0,0,0.14) 100%)',
+              boxShadow:
+                'inset 0 1.5px 1px rgba(255,255,255,0.4), inset -1.5px 0 2px rgba(0,0,0,0.15), inset 0 -2px 3px rgba(0,0,0,0.3)',
+            }}
+          />
         </div>
       );
     }
@@ -217,22 +283,22 @@ export const PageRenderer: React.FC<PageRendererProps> = ({
       (page as any).templateId ||
       (bTitle.includes('digital mastery') || bTitle.includes('art of digital') ? 'tpl-digital-mastery' :
        bTitle.includes('atelier') || bTitle.includes('couture') || bTitle.includes('lookbook') || bTitle.includes('fashion') ? 'tpl-vogue-fashion' :
-       bTitle.includes('autonomous') || bTitle.includes('spatial systems') || bTitle.includes('whitepaper') || bTitle.includes('intelligence') ? 'tpl-ai-tech' :
+       bTitle.includes('autonomous') || bTitle.includes('spatial systems') || bTitle.includes('whitepaper') || bTitle.includes('aurelian') ? 'tpl-ai-tech' :
        bTitle.includes('étoile') || bTitle.includes('bistro') || bTitle.includes('degustation') || bTitle.includes('gourmet') ? 'tpl-gourmet-menu' :
-       bTitle.includes('urban sanctuaries') || bTitle.includes('monolithic') || bTitle.includes('architectural') || bTitle.includes('sanctuaries') ? 'tpl-architectural-digest' :
-       bTitle.includes('whispering forest') || bTitle.includes('enchanted') || bTitle.includes('storybook') || bTitle.includes('fairy tale') ? 'tpl-mystic-storybook' :
+       bTitle.includes('haven') || bTitle.includes('urban sanctuaries') || bTitle.includes('monolithic') || bTitle.includes('architectural') || bTitle.includes('residences') ? 'tpl-architectural-digest' :
+       bTitle.includes('enchanted tales') || bTitle.includes('whispering forest') || bTitle.includes('enchanted') || bTitle.includes('storybook') || bTitle.includes('fairy tale') ? 'tpl-mystic-storybook' :
        bTitle.includes('wild horizons') || bTitle.includes('expedition') || bTitle.includes('wildlife') || bTitle.includes('nomad') ? 'tpl-creative-agency' :
-       bTitle.includes('eternal bloom') || bTitle.includes('wedding keepsake') || bTitle.includes('wedding') || bTitle.includes('sakura') ? 'tpl-sakura-wedding' :
-       bTitle.includes('daily chronicle') || bTitle.includes('chronicle') || bTitle.includes('newspaper') || bTitle.includes('broadsheet') || bTitle.includes('gazette') ? 'tpl-vintage-newspaper' :
-       bTitle.includes('nordic haven') || bTitle.includes('furniture') || bTitle.includes('living catalog') || bTitle.includes('scandi') ? 'tpl-scandi-catalog' :
+       bTitle.includes('vertex') || bTitle.includes('saas metrics') || bTitle.includes('q3 performance') || bTitle.includes('eternal bloom') || bTitle.includes('wedding') || bTitle.includes('sakura') ? 'tpl-sakura-wedding' :
+       bTitle.includes('chronicle') || bTitle.includes('newspaper') || bTitle.includes('broadsheet') || bTitle.includes('gazette') ? 'tpl-vintage-newspaper' :
+       bTitle.includes('nordic') || bTitle.includes('furniture') || bTitle.includes('living catalog') || bTitle.includes('scandi') ? 'tpl-scandi-catalog' :
        bTitle.includes('metropolis') || bTitle.includes('infrastructure') || bTitle.includes('corporate brochure') || bTitle.includes('building the future') ? 'tpl-corporate-brochure' :
-       bTitle.includes('forno') || bTitle.includes('toscana') || bTitle.includes('artisan cookbook') || bTitle.includes('cookbook') || bTitle.includes('pasta') ? 'tpl-artisan-cookbook' :
+       bTitle.includes('forno') || bTitle.includes('toscana') || bTitle.includes('artisan cookbook') || bTitle.includes('cookbook') || bTitle.includes('cucina') ? 'tpl-artisan-cookbook' :
        bTitle.includes('amalfi') || bTitle.includes('capri') || bTitle.includes('dolce vita') || bTitle.includes('travel guide') ? 'tpl-amalfi-guide' :
-       bTitle.includes('nexus') || bTitle.includes('cognition') || bTitle.includes('pitch deck') || bTitle.includes('series a') ? 'tpl-venture-pitch' :
+       bTitle.includes('nexus') || bTitle.includes('cognition') || bTitle.includes('pitch deck') || bTitle.includes('series a') || bTitle.includes('series-a') ? 'tpl-venture-pitch' :
        bTitle.includes('veridian') || bTitle.includes('security & culture') || bTitle.includes('company handbook') || bTitle.includes('employee handbook') ? 'tpl-company-handbook' :
        bTitle.includes('balbianello') || bTitle.includes('summer gala') || bTitle.includes('royal invitation') || bTitle.includes('masquerade') ? 'tpl-royal-invitation' :
        bTitle.includes('philharmonic') || bTitle.includes('albert hall') || bTitle.includes('playbill') || bTitle.includes('mahler') || bTitle.includes('concert') ? 'tpl-theatre-playbill' :
-       bTitle.includes('cyber blade') || bTitle.includes('shonen') || bTitle.includes('manga') ? 'tpl-manga-shonen' :
+       bTitle.includes('cyber blade') || bTitle.includes('shonen') || bTitle.includes('manga') || bTitle.includes('neon nemesis') ? 'tpl-manga-shonen' :
        bTitle.includes('apex') || bTitle.includes('gt-r') || bTitle.includes('hypercar') || bTitle.includes('supercar') ? 'tpl-supercar-apex' :
        theme.id === 'emerald-gold' ? 'tpl-digital-mastery' :
        theme.id === 'editorial-ivory' ? 'tpl-vogue-fashion' :
@@ -241,13 +307,13 @@ export const PageRenderer: React.FC<PageRendererProps> = ({
        theme.id === 'nordic-sage' ? 'tpl-architectural-digest' :
        theme.id === 'vintage-leather' ? 'tpl-mystic-storybook' :
        theme.id === 'midnight-sapphire' ? 'tpl-creative-agency' :
-       theme.id === 'sakura-blush' ? 'tpl-sakura-wedding' :
+       theme.id === 'sakura-blush' || theme.id === 'minimal-slate' ? 'tpl-sakura-wedding' :
        theme.id === 'newspaper-broadsheet' ? 'tpl-vintage-newspaper' :
        theme.id === 'catalog-minimal' ? 'tpl-scandi-catalog' :
        theme.id === 'brochure-corporate' ? 'tpl-corporate-brochure' :
-       theme.id === 'cookbook-rustic' || theme.id === 'cookbook-terracotta' ? 'tpl-artisan-cookbook' :
-       theme.id === 'travel-mediterranean' ? 'tpl-amalfi-guide' :
-       theme.id === 'deck-pitch' || theme.id === 'obsidian-neon' ? 'tpl-venture-pitch' :
+       theme.id === 'recipe-artisan' || theme.id === 'cookbook-rustic' ? 'tpl-artisan-cookbook' :
+       theme.id === 'guidebook-travel' || theme.id === 'travel-mediterranean' ? 'tpl-amalfi-guide' :
+       theme.id === 'presentation-pitch' || theme.id === 'deck-pitch' || theme.id === 'obsidian-neon' ? 'tpl-venture-pitch' :
        theme.id === 'handbook-slate' ? 'tpl-company-handbook' :
        theme.id === 'invitation-luxury' || theme.id === 'royal-gold' ? 'tpl-royal-invitation' :
        theme.id === 'booklet-theatre' ? 'tpl-theatre-playbill' :
@@ -266,7 +332,6 @@ export const PageRenderer: React.FC<PageRendererProps> = ({
           footerNote={page.footerNote}
           coverImageUrl={page.imageUrl || page.coverImageUrl || coverImageUrl}
           isInteractiveCover={true}
-          onOpenBook={() => onNavigateToPage?.(1)}
         />
       </div>
     );
@@ -297,14 +362,40 @@ export const PageRenderer: React.FC<PageRendererProps> = ({
               display: 'block',
             }}
           />
+          {/* Right-side Spine Hinge Groove for Back Cover */}
+          <div
+            className="absolute inset-y-0 right-0 w-[22px] pointer-events-none z-10"
+            style={{
+              background:
+                'linear-gradient(to left, rgba(0,0,0,0.45) 0%, rgba(255,255,255,0.25) 18%, rgba(0,0,0,0.04) 40%, rgba(0,0,0,0.38) 68%, rgba(255,255,255,0.22) 82%, transparent 100%)',
+            }}
+          />
         </div>
       );
     }
 
     return (
-      <div className="w-full h-full p-4 md:p-6 flex flex-col justify-between items-center text-center relative box-border">
+      <div className="w-full h-full p-5 md:p-7 flex flex-col justify-between items-center text-center relative box-border overflow-hidden select-none">
+        {/* Right-side Spine Binding & French Groove on Back Cover */}
         <div
-          className="w-full h-full border rounded p-4 flex flex-col justify-between items-center relative z-10 box-border"
+          className="absolute inset-y-0 right-0 w-[24px] pointer-events-none z-20"
+          style={{
+            background:
+              'linear-gradient(to left, rgba(0,0,0,0.72) 0%, rgba(255,255,255,0.2) 18%, rgba(255,255,255,0.04) 38%, rgba(0,0,0,0.55) 68%, rgba(0,0,0,0.25) 76%, rgba(255,255,255,0.16) 84%, transparent 100%)',
+          }}
+        />
+        <div
+          className="absolute inset-0 pointer-events-none z-20"
+          style={{
+            background:
+              'linear-gradient(230deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.02) 30%, rgba(0,0,0,0) 55%, rgba(0,0,0,0.28) 100%)',
+            boxShadow:
+              'inset 0 1.5px 1px rgba(255,255,255,0.28), inset 1.5px 0 2px rgba(255,255,255,0.12), inset 0 -2px 3px rgba(0,0,0,0.55), inset 0 0 32px rgba(0,0,0,0.4)',
+          }}
+        />
+
+        <div
+          className="w-full h-full border rounded p-5 flex flex-col justify-between items-center relative z-10 box-border"
           style={{ borderColor: theme.borderColor }}
         >
           {/* 4 Corner Ornaments */}
@@ -370,9 +461,11 @@ export const PageRenderer: React.FC<PageRendererProps> = ({
         color: theme.pageTextColor,
       }}
     >
+      {renderSubtlePageGeometry()}
+
       {/* Page Header */}
       <div
-        className="flex justify-between items-center pb-2 mb-3 text-[9.5px] font-bold tracking-[1.5px] uppercase opacity-60"
+        className="flex justify-between items-center pb-2 mb-3 text-[9.5px] font-bold tracking-[1.5px] uppercase opacity-60 relative z-10"
         style={{
           borderBottom: `1px solid ${theme.borderColor || 'rgba(0,0,0,0.08)'}`,
           color: theme.accentColor || '#64748b',
@@ -383,7 +476,7 @@ export const PageRenderer: React.FC<PageRendererProps> = ({
       </div>
 
       {/* Page Body Content */}
-      <div className="flex-1 overflow-hidden flex flex-col justify-center">
+      <div className="flex-1 overflow-hidden flex flex-col justify-center relative z-10">
         {/* Title & Subtitle if present */}
         {page.title && (
           <h2
@@ -408,8 +501,9 @@ export const PageRenderer: React.FC<PageRendererProps> = ({
             {(page.bulletItems || []).map((item, idx) => (
               <div
                 key={item.id || idx}
+                data-goto-page={idx + 1}
                 onClick={() => onNavigateToPage && onNavigateToPage(idx + 1)}
-                className="flex items-center justify-between p-2 rounded-lg transition-colors cursor-pointer border hover:opacity-90"
+                className="toc-item flex items-center justify-between p-2 rounded-lg transition-colors cursor-pointer border hover:opacity-90"
                 style={{
                   backgroundColor: 'rgba(125, 125, 125, 0.05)',
                   borderColor: theme.borderColor || 'rgba(0,0,0,0.06)',
@@ -653,7 +747,7 @@ export const PageRenderer: React.FC<PageRendererProps> = ({
 
       {/* Page Footer */}
       <div
-        className="flex justify-between items-center pt-2 mt-3 text-[10px] font-medium opacity-60"
+        className="flex justify-between items-center pt-2 mt-3 text-[10px] font-medium opacity-60 relative z-10"
         style={{
           borderTop: `1px solid ${theme.borderColor || 'rgba(0,0,0,0.08)'}`,
         }}

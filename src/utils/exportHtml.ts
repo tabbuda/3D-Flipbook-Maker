@@ -2,6 +2,12 @@ import { BookProject } from '../types/flipbook';
 import { COVER_THEMES } from '../constants/templates';
 import { convertBookImagesToBase64 } from './imageUtils';
 import { getLicenseInfo } from './licenseManager';
+import pageFlipModuleRaw from 'page-flip/dist/js/page-flip.module.js?raw';
+
+const INLINE_PAGE_FLIP_ENGINE = pageFlipModuleRaw.replace(
+  /export\s*\{\s*x\s+as\s+PageFlip\s*\}\s*;?/,
+  'window.PageFlip = x;'
+);
 
 export async function generateStandaloneFlipbookHtmlAsync(
   book: BookProject,
@@ -306,9 +312,13 @@ export function generateStandaloneFlipbookHtml(
           height 0.3s ease;
         border-radius: var(--book-radius);
         background: transparent;
+        box-shadow: none;
+      }
+
+      .stf__item.--simple {
         box-shadow:
-          0 18px 45px -10px rgba(0, 0, 0, 0.16),
-          0 6px 18px -4px rgba(0, 0, 0, 0.08);
+          0 16px 38px -10px rgba(0, 0, 0, 0.16),
+          0 6px 16px -4px rgba(0, 0, 0, 0.08);
       }
 
       /* Desktop Book Position adjustment when closed on Cover or Back Cover */
@@ -366,7 +376,7 @@ export function generateStandaloneFlipbookHtml(
       body.is-mobile .flipbook-container.is-back-closed,
       .is-mobile .flipbook-container.is-back-closed,
       .flipbook-container.is-mobile.is-back-closed {
-        transform: translateX(var(--page-w)) !important;
+        transform: translateX(0) !important;
       }
 
       /* Center Spine Shadow */
@@ -385,12 +395,75 @@ export function generateStandaloneFlipbookHtml(
           rgba(0, 0, 0, 0.04) 65%,
           rgba(0, 0, 0, 0) 100%
         );
-        z-index: 60;
+        z-index: 2;
         pointer-events: none;
+        transition: opacity 0.18s ease;
+      }
+
+      .flipbook-container.is-flipping-active .book-spine-shadow {
+        opacity: 0 !important;
       }
 
       body.is-mobile .book-spine-shadow {
         display: none;
+      }
+
+      /* StPageFlip 3D Corner-Curl Engine Overrides */
+      .stf__parent {
+        position: relative !important;
+        display: block !important;
+        box-sizing: border-box !important;
+        transform: translateZ(0);
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+
+      .stf__wrapper {
+        position: relative !important;
+        width: 100% !important;
+        height: 100% !important;
+        box-sizing: border-box !important;
+        padding-bottom: 0 !important;
+      }
+
+      .stf__parent canvas {
+        position: absolute !important;
+        width: 100% !important;
+        height: 100% !important;
+        left: 0 !important;
+        top: 0 !important;
+        pointer-events: none;
+      }
+
+      .stf__block {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        box-sizing: border-box !important;
+        perspective: 2200px !important;
+      }
+
+      .stf__item {
+        display: none;
+        position: absolute !important;
+        transform-style: preserve-3d;
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
+        will-change: transform, clip-path;
+      }
+
+      .stf__outerShadow,
+      .stf__innerShadow,
+      .stf__hardShadow,
+      .stf__hardInnerShadow {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        pointer-events: none !important;
+        will-change: transform, opacity, clip-path;
       }
 
       /* 3D Leaf Sheet */
@@ -455,6 +528,20 @@ export function generateStandaloneFlipbookHtml(
         );
         box-shadow: inset 14px 0 18px -10px rgba(0, 0, 0, 0.05);
         border-left: 1px solid rgba(0, 0, 0, 0.04);
+      }
+
+      .leaf-face.face-left {
+        z-index: 2;
+        border-top-left-radius: var(--book-radius);
+        border-bottom-left-radius: var(--book-radius);
+        background-image: linear-gradient(
+          to right,
+          #ffffff 0%,
+          #fafcfb 80%,
+          #f2f5f3 100%
+        );
+        box-shadow: inset -14px 0 18px -10px rgba(0, 0, 0, 0.05);
+        border-right: 1px solid rgba(0, 0, 0, 0.04);
       }
 
       .leaf-face.face-back {
@@ -1138,7 +1225,7 @@ export function generateStandaloneFlipbookHtml(
         </div>
       </div>
 
-      <!-- Bottom Navigation Curved Arrows -->
+      <!-- Bottom Navigation Curved Arrows & Center Page No. Input Box -->
       <button
         class="corner-nav-btn btn-prev-corner"
         id="btn-prev-corner"
@@ -1150,6 +1237,24 @@ export function generateStandaloneFlipbookHtml(
           <path d="M20 20v-7a4 4 0 0 0-4-4H4"></path>
         </svg>
       </button>
+
+      <div
+        id="page-jump-pill"
+        title="Type page number and press Enter to jump"
+        style="position:absolute;bottom:22px;left:50%;transform:translateX(-50%);z-index:1000;background:rgba(255,255,255,0.88);backdrop-filter:blur(8px);border:1px solid rgba(14,107,78,0.16);padding:5px 12px;border-radius:9999px;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#334155;box-shadow:0 4px 12px rgba(10,32,23,0.08);"
+      >
+        <span style="color:#64748b;font-size:11px;">Page</span>
+        <input
+          id="page-jump-input"
+          type="number"
+          min="1"
+          value="1"
+          onkeydown="handlePageJumpKey(event)"
+          onblur="handlePageJumpBlur(this)"
+          style="width:44px;padding:2px 4px;text-align:center;font-family:monospace;font-weight:700;font-size:12px;color:#0f172a;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:6px;outline:none;-moz-appearance:textfield;"
+        />
+        <span id="page-jump-total" style="color:#64748b;font-size:11px;font-family:monospace;">/ 1</span>
+      </div>
 
       <button
         class="corner-nav-btn btn-next-corner"
@@ -1167,32 +1272,60 @@ export function generateStandaloneFlipbookHtml(
         !isPro
           ? `<!-- Free Starter Watermark Badge (Pro users get 100% white-label) -->
       <a
-        href="https://flipbook-studio.app"
+        href="https://tabrej6.gumroad.com/l/3d-flipbook-pro"
         target="_blank"
         rel="noopener noreferrer"
         id="badge-watermark"
-        style="position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:9999;background:rgba(15,23,42,0.85);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.18);padding:5px 14px;border-radius:9999px;display:flex;align-items:center;gap:6px;color:#ffffff;text-decoration:none;font-size:11px;font-family:system-ui,-apple-system,sans-serif;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,0.3);transition:transform 0.2s;"
-        onmouseover="this.style.transform='translateX(-50%) scale(1.04)'"
-        onmouseout="this.style.transform='translateX(-50%) scale(1)'"
-        title="Created with 3D Flipbook Studio"
+        style="position:fixed;top:20px;left:24px;z-index:9999;background:rgba(15,23,42,0.88);backdrop-filter:blur(8px);border:1px solid rgba(16,185,129,0.35);padding:6px 14px;border-radius:9999px;display:flex;align-items:center;gap:6px;color:#ffffff;text-decoration:none;font-size:11px;font-family:system-ui,-apple-system,sans-serif;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,0.3);transition:transform 0.2s;"
+        onmouseover="this.style.transform='scale(1.04)'"
+        onmouseout="this.style.transform='scale(1)'"
+        title="Created with FlipApp 3D — Get Lifetime Pro"
       >
-        <span style="color:#10b981;font-size:13px;line-height:1;">✦</span>
-        <span>Made with 3D Flipbook Studio</span>
+        <span style="color:#fbbf24;font-size:13px;line-height:1;">⚡</span>
+        <span>Created with FlipApp 3D</span>
+        <span style="color:#34d399;font-size:10px;padding-left:4px;border-left:1px solid rgba(255,255,255,0.2);">Get Pro</span>
+      </a>`
+          : book.customBrandLogo || book.customBrandName
+          ? `<!-- Pro Custom Brand Logo / Link -->
+      <a
+        href="${(book.customBrandUrl || '#').replace(/"/g, '&quot;')}"
+        ${book.customBrandUrl ? 'target="_blank" rel="noopener noreferrer"' : ''}
+        id="badge-custom-brand"
+        style="position:fixed;top:20px;left:24px;z-index:9999;background:rgba(255,255,255,0.92);backdrop-filter:blur(8px);border:1px solid rgba(15,23,42,0.12);padding:5px 12px;border-radius:12px;display:flex;align-items:center;gap:8px;color:#0f172a;text-decoration:none;font-size:12px;font-family:system-ui,-apple-system,sans-serif;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,0.12);transition:transform 0.2s;"
+        onmouseover="this.style.transform='scale(1.03)'"
+        onmouseout="this.style.transform='scale(1)'"
+      >
+        ${
+          book.customBrandLogo
+            ? `<img src="${book.customBrandLogo.replace(/"/g, '&quot;')}" alt="Brand" style="height:22px;width:auto;max-width:90px;object-fit:contain;border-radius:4px;display:block;" />`
+            : ''
+        }
+        ${
+          book.customBrandName
+            ? `<span>${book.customBrandName.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>`
+            : ''
+        }
       </a>`
           : ''
       }
     </div>
 
     <script>
+      ${INLINE_PAGE_FLIP_ENGINE}
       (function () {
         var soundEnabled = ${book.soundEnabled !== false};
         var initialTargetPage = ${initialPage};
         var hasInitializedPage = false;
-        var currentLeafIndex = 0;
-        var totalLeaves = 0;
+        var currentPageIndex = 0;
+        var totalPagesCount = 0;
         var isAnimating = false;
         var audioCtx = null;
-        var leaves = [];
+        var pageFlipInstance = null;
+        var currentPageW = 400;
+        var currentPageH = 566;
+        var lastBuiltPageW = 0;
+        var lastBuiltPageH = 0;
+        var lastBuiltMobile = null;
 
         var bookProject = ${bookJson};
 
@@ -1292,6 +1425,25 @@ export function generateStandaloneFlipbookHtml(
 
         // Render Page Faces
         function buildFaceHTML(faceData, sideClass, pageIndex) {
+          var rawHtml = buildFaceRawHTML(faceData, sideClass, pageIndex);
+          if (
+            !faceData ||
+            faceData.template === "cover-front" ||
+            faceData.template === "cover-back"
+          ) {
+            return rawHtml;
+          }
+          var isLeftPage = (pageIndex || 1) % 2 === 0;
+          var circleOverlay = isLeftPage
+            ? "<div style='position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:5;'><div style='position:absolute;width:56%;aspect-ratio:1/1;top:-16%;right:10%;border-radius:50%;border:1px solid rgba(15,23,42,0.25);pointer-events:none;'></div></div>"
+            : "<div style='position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:5;'><div style='position:absolute;width:58%;aspect-ratio:1/1;bottom:-18%;right:-12%;border-radius:50%;border:1px solid rgba(15,23,42,0.25);pointer-events:none;'></div></div>";
+          return rawHtml.replace(
+            "<div class='page-content-wrapper'",
+            circleOverlay + "<div class='page-content-wrapper'"
+          );
+        }
+
+        function buildFaceRawHTML(faceData, sideClass, pageIndex) {
           if (!faceData) {
             return (
               "<div class='leaf-face " +
@@ -1455,6 +1607,141 @@ export function generateStandaloneFlipbookHtml(
                 bHtml += "<div class='barcode-lines' style='width:100%;height:calc(22px*var(--page-scale));background:repeating-linear-gradient(to right,#000 0,#000 2px,#fff 2px,#fff 4px);'></div>";
                 bHtml += "<div style='font-size:calc(8.5px*var(--page-scale));font-family:monospace;margin-top:2px;'>" + (b.isbn || 'ISBN 978-0-123456-78-9') + "</div>";
                 bHtml += "</div>";
+              } else if (b.type === 'menu-course-item') {
+                bHtml += "<div style='padding:calc(6px*var(--page-scale)) 0;border-bottom:1px solid rgba(0,0,0,0.06);'>";
+                if (b.courseCategory) bHtml += "<span style='font-size:calc(8.5px*var(--page-scale));font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:var(--accent-green);display:inline-block;margin-bottom:2px;'>" + b.courseCategory + "</span>";
+                bHtml += "<div style='display:flex;align-items:baseline;justify-content:space-between;gap:6px;'>";
+                bHtml += "<span style='font-size:calc(12px*var(--page-scale));font-weight:800;'>" + (b.title || '') + "</span>";
+                bHtml += "<span style='flex:1;border-bottom:1px dotted var(--accent-green);opacity:0.4;margin:0 6px;'></span>";
+                bHtml += "<span style='font-size:calc(12px*var(--page-scale));font-family:monospace;font-weight:800;color:var(--accent-green);'>" + (b.price || '') + "</span>";
+                bHtml += "</div>";
+                if (b.paragraph1) bHtml += "<div style='font-size:calc(10px*var(--page-scale));font-style:italic;opacity:0.8;margin-top:2px;'>" + b.paragraph1 + "</div>";
+                if (b.sommelierNote) bHtml += "<div style='font-size:calc(9px*var(--page-scale));color:var(--accent-green);font-weight:600;margin-top:3px;'>🍷 " + b.sommelierNote + "</div>";
+                bHtml += "</div>";
+              } else if (b.type === 'recipe-step-card') {
+                bHtml += "<div style='padding:calc(8px*var(--page-scale));border-radius:8px;border:1px solid rgba(0,0,0,0.12);background:rgba(0,0,0,0.02);'>";
+                bHtml += "<div style='display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(0,0,0,0.08);padding-bottom:4px;margin-bottom:6px;'>";
+                bHtml += "<span style='font-size:calc(11.5px*var(--page-scale));font-weight:800;color:var(--accent-green);'>🍳 " + (b.title || '') + "</span>";
+                bHtml += "<span style='font-size:calc(9px*var(--page-scale));font-family:monospace;opacity:0.75;'>" + (b.prepTime ? "Prep: " + b.prepTime + " " : "") + (b.cookTime ? "| Cook: " + b.cookTime : "") + "</span>";
+                bHtml += "</div>";
+                if (b.ingredients && b.ingredients.length) {
+                  bHtml += "<div style='display:grid;grid-template-columns:1fr 1fr;gap:3px;font-size:calc(9.5px*var(--page-scale));margin-bottom:6px;padding:4px 6px;background:rgba(0,0,0,0.03);border-radius:4px;'>";
+                  b.ingredients.forEach(function(ing) { bHtml += "<div>• " + ing + "</div>"; });
+                  bHtml += "</div>";
+                }
+                if (b.paragraph1) bHtml += "<div style='font-size:calc(10.5px*var(--page-scale));line-height:1.45;'>" + b.paragraph1 + "</div>";
+                if (b.chefTip) bHtml += "<div style='margin-top:5px;padding:4px 6px;border-radius:4px;background:rgba(245,158,11,0.12);font-size:calc(9.5px*var(--page-scale));'>💡 <strong>Chef’s Secret:</strong> " + b.chefTip + "</div>";
+                bHtml += "</div>";
+              } else if (b.type === 'product-catalog-grid') {
+                bHtml += "<div>";
+                if (b.title) bHtml += "<div style='font-size:calc(11px*var(--page-scale));font-weight:800;text-transform:uppercase;color:var(--accent-green);margin-bottom:4px;'>" + b.title + "</div>";
+                bHtml += "<div style='display:grid;grid-template-columns:1fr 1fr;gap:calc(7px*var(--page-scale));'>";
+                (b.items || []).forEach(function(item) {
+                  bHtml += "<div style='padding:calc(6px*var(--page-scale));border-radius:6px;border:1px solid rgba(0,0,0,0.1);background:rgba(0,0,0,0.02);'>";
+                  if (item.imageUrl) bHtml += "<img src='" + item.imageUrl + "' alt='Product' style='width:100%;height:calc(68px*var(--page-scale));object-fit:cover;border-radius:4px;margin-bottom:4px;display:block;' />";
+                  bHtml += "<div style='font-size:calc(8px*var(--page-scale));font-family:monospace;opacity:0.65;'>" + (item.sku || 'COLLECTION') + " • " + (item.status || 'In Stock') + "</div>";
+                  bHtml += "<div style='font-size:calc(10.5px*var(--page-scale));font-weight:800;margin-top:1px;'>" + (item.title || '') + "</div>";
+                  if (item.description) bHtml += "<div style='font-size:calc(9px*var(--page-scale));opacity:0.75;line-height:1.3;'>" + item.description + "</div>";
+                  if (item.price) bHtml += "<div style='font-size:calc(10.5px*var(--page-scale));font-weight:800;color:var(--accent-green);margin-top:3px;'>" + item.price + "</div>";
+                  bHtml += "</div>";
+                });
+                bHtml += "</div></div>";
+              } else if (b.type === 'travel-itinerary-step') {
+                bHtml += "<div style='padding:calc(8px*var(--page-scale));border-radius:8px;border:1px solid rgba(0,0,0,0.12);background:rgba(0,0,0,0.02);'>";
+                bHtml += "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;'>";
+                bHtml += "<span style='font-size:calc(9px*var(--page-scale));font-family:monospace;font-weight:800;padding:2px 6px;border-radius:4px;background:var(--accent-green);color:#000;'>📍 " + (b.itineraryTime || 'DAY 01') + "</span>";
+                if (b.travelDuration) bHtml += "<span style='font-size:calc(9px*var(--page-scale));opacity:0.7;'>" + b.travelDuration + "</span>";
+                bHtml += "</div>";
+                bHtml += "<div style='font-size:calc(12px*var(--page-scale));font-weight:800;margin-bottom:4px;'>" + (b.title || '') + "</div>";
+                if (b.imageUrl) bHtml += "<img src='" + b.imageUrl + "' alt='Destination' style='width:100%;height:calc(88px*var(--page-scale));object-fit:cover;border-radius:6px;margin-bottom:4px;display:block;' />";
+                if (b.paragraph1) bHtml += "<div style='font-size:calc(10px*var(--page-scale));line-height:1.45;'>" + b.paragraph1 + "</div>";
+                if (b.travelTips) bHtml += "<div style='margin-top:4px;padding:4px 6px;border-radius:4px;background:rgba(6,182,212,0.1);font-size:calc(9px*var(--page-scale));'>🗺️ <strong>Insider Tip:</strong> " + b.travelTips + "</div>";
+                bHtml += "</div>";
+              } else if (b.type === 'newspaper-headline-columns') {
+                bHtml += "<div style='border-top:2px solid currentColor;border-bottom:1px solid rgba(0,0,0,0.15);padding:calc(6px*var(--page-scale)) 0;'>";
+                if (b.newspaperSection) bHtml += "<div style='font-size:calc(8px*var(--page-scale));font-family:monospace;letter-spacing:1.5px;text-transform:uppercase;text-align:center;opacity:0.75;'>" + b.newspaperSection + (b.issueDate ? " • " + b.issueDate : "") + "</div>";
+                bHtml += "<div style='font-size:calc(14px*var(--page-scale));font-weight:900;text-transform:uppercase;text-align:center;margin:2px 0;'>" + (b.title || '') + "</div>";
+                if (b.byline) bHtml += "<div style='font-size:calc(8.5px*var(--page-scale));font-style:italic;text-align:center;opacity:0.7;margin-bottom:5px;'>By " + b.byline + (b.dateline ? " — " + b.dateline : "") + "</div>";
+                bHtml += "<div style='display:grid;grid-template-columns:1fr 1fr;gap:calc(10px*var(--page-scale));font-size:calc(10px*var(--page-scale));line-height:1.5;text-align:justify;'>";
+                bHtml += "<div>" + (b.paragraph1 || '') + "</div><div>" + (b.paragraph2 || '') + "</div></div></div>";
+              } else if (b.type === 'presentation-pitch-slide') {
+                bHtml += "<div style='display:flex;flex-direction:column;gap:calc(6px*var(--page-scale));'>";
+                if (b.title) bHtml += "<div style='font-size:calc(12px*var(--page-scale));font-weight:800;text-transform:uppercase;color:var(--accent-green);'>" + b.title + "</div>";
+                if (b.problemStatement || b.solutionStatement) {
+                  bHtml += "<div style='display:grid;grid-template-columns:1fr 1fr;gap:calc(6px*var(--page-scale));font-size:calc(9.5px*var(--page-scale));'>";
+                  bHtml += "<div style='padding:calc(6px*var(--page-scale));border-radius:6px;background:rgba(244,63,94,0.1);border:1px solid rgba(244,63,94,0.3);'><strong>⚠️ Problem:</strong><br/>" + (b.problemStatement || '') + "</div>";
+                  bHtml += "<div style='padding:calc(6px*var(--page-scale));border-radius:6px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);'><strong>✨ Solution:</strong><br/>" + (b.solutionStatement || '') + "</div>";
+                  bHtml += "</div>";
+                }
+                if (b.marketSizeTAM || b.marketSizeSAM) {
+                  bHtml += "<div style='display:grid;grid-template-columns:1fr 1fr;gap:calc(6px*var(--page-scale));text-align:center;'>";
+                  bHtml += "<div style='padding:calc(6px*var(--page-scale));border-radius:6px;border:1px solid rgba(6,182,212,0.35);'><div style='font-size:calc(13px*var(--page-scale));font-weight:900;font-family:monospace;color:var(--accent-green);'>" + (b.marketSizeTAM || '') + "</div><div style='font-size:calc(8px*var(--page-scale));opacity:0.7;'>TOTAL ADDRESSABLE MARKET</div></div>";
+                  bHtml += "<div style='padding:calc(6px*var(--page-scale));border-radius:6px;border:1px solid rgba(6,182,212,0.35);'><div style='font-size:calc(13px*var(--page-scale));font-weight:900;font-family:monospace;color:var(--accent-green);'>" + (b.marketSizeSAM || '') + "</div><div style='font-size:calc(8px*var(--page-scale));opacity:0.7;'>SERVICEABLE MARKET</div></div>";
+                  bHtml += "</div>";
+                }
+                bHtml += "</div>";
+              } else if (b.type === 'invitation-rsvp-card') {
+                bHtml += "<div style='padding:calc(12px*var(--page-scale));border-radius:10px;border:1px solid var(--accent-green);text-align:center;'>";
+                bHtml += "<div style='font-size:calc(12.5px*var(--page-scale));font-style:italic;font-weight:800;color:var(--accent-green);margin-bottom:4px;'>" + (b.title || '') + "</div>";
+                if (b.eventDate) bHtml += "<div style='font-size:calc(11px*var(--page-scale));font-weight:700;'>" + b.eventDate + "</div>";
+                if (b.eventTime) bHtml += "<div style='font-size:calc(10px*var(--page-scale));opacity:0.85;'>" + b.eventTime + "</div>";
+                if (b.eventVenue) bHtml += "<div style='font-size:calc(10px*var(--page-scale));font-style:italic;opacity:0.85;margin-bottom:4px;'>" + b.eventVenue + "</div>";
+                if (b.dressCode) bHtml += "<div style='font-size:calc(8.5px*var(--page-scale));font-family:monospace;text-transform:uppercase;opacity:0.7;'>DRESS CODE: " + b.dressCode + "</div>";
+                bHtml += "</div>";
+              } else if (b.type === 'handbook-policy-card') {
+                bHtml += "<div style='padding:calc(8px*var(--page-scale));border-radius:8px;border:1px solid rgba(0,0,0,0.12);background:rgba(0,0,0,0.02);'>";
+                bHtml += "<div style='display:flex;justify-content:space-between;font-size:calc(8.5px*var(--page-scale));font-family:monospace;font-weight:800;color:var(--accent-green);margin-bottom:3px;'><span>" + (b.policyCode || 'POLICY') + "</span><span>✓ " + (b.complianceStatus || 'Mandatory') + "</span></div>";
+                bHtml += "<div style='font-size:calc(11.5px*var(--page-scale));font-weight:800;margin-bottom:3px;'>" + (b.title || '') + "</div>";
+                if (b.paragraph1) bHtml += "<div style='font-size:calc(10px*var(--page-scale));line-height:1.45;margin-bottom:4px;'>" + b.paragraph1 + "</div>";
+                (b.items || []).forEach(function(item) {
+                  bHtml += "<div style='font-size:calc(9.5px*var(--page-scale));margin-top:2px;'>✓ <strong>" + item.title + ":</strong> " + item.description + "</div>";
+                });
+                bHtml += "</div>";
+              } else if (b.type === 'code-terminal') {
+                bHtml += "<div style='border-radius:8px;overflow:hidden;background:#0d1117;color:#e6edf3;font-family:monospace;padding:calc(8px*var(--page-scale));border:1px solid #30363d;'>";
+                bHtml += "<div style='font-size:calc(9px*var(--page-scale));color:#8b949e;margin-bottom:4px;'>$ " + (b.title || 'system --execute') + "</div>";
+                bHtml += "<pre style='margin:0;font-size:calc(9.5px*var(--page-scale));color:#79c0ff;white-space:pre-wrap;'>" + (b.codeSnippet || '') + "</pre>";
+                if (b.terminalOutput) bHtml += "<div style='margin-top:4px;padding-top:4px;border-top:1px solid #21262d;font-size:calc(9px*var(--page-scale));color:#d29922;'>" + b.terminalOutput + "</div>";
+                bHtml += "</div>";
+              } else if (b.type === 'stat-gauge-matrix' || b.type === 'specs-badge-grid') {
+                bHtml += "<div>";
+                if (b.title) bHtml += "<div style='font-size:calc(11px*var(--page-scale));font-weight:800;text-transform:uppercase;color:var(--accent-green);margin-bottom:4px;'>" + b.title + "</div>";
+                bHtml += "<div style='display:grid;grid-template-columns:repeat(2,1fr);gap:calc(6px*var(--page-scale));'>";
+                (b.items || []).forEach(function(stat) {
+                  bHtml += "<div style='padding:calc(6px*var(--page-scale));border-radius:6px;border:1px solid rgba(0,0,0,0.12);background:rgba(0,0,0,0.02);'>";
+                  bHtml += "<div style='font-size:calc(8.5px*var(--page-scale));font-weight:700;text-transform:uppercase;opacity:0.75;'>" + (stat.title || stat.tag || '') + "</div>";
+                  bHtml += "<div style='font-size:calc(14px*var(--page-scale));font-weight:900;font-family:monospace;color:var(--accent-green);'>" + (stat.highlight || stat.description || '') + "</div>";
+                  bHtml += "</div>";
+                });
+                bHtml += "</div></div>";
+              } else if (b.type === 'polaroid-gallery') {
+                bHtml += "<div style='display:grid;grid-template-columns:1fr 1fr;gap:calc(8px*var(--page-scale));padding:calc(4px*var(--page-scale)) 0;'>";
+                if (b.imageUrl) {
+                  bHtml += "<div style='background:#fff;padding:calc(6px*var(--page-scale));border-radius:4px;box-shadow:0 2px 6px rgba(0,0,0,0.12);text-align:center;color:#1e293b;'><img src='" + b.imageUrl + "' alt='Polaroid' style='width:100%;height:calc(80px*var(--page-scale));object-fit:cover;display:block;' /><div style='font-size:calc(9.5px*var(--page-scale));font-style:italic;margin-top:4px;'>" + (b.title || '') + "</div></div>";
+                }
+                if (b.imageUrl2) {
+                  bHtml += "<div style='background:#fff;padding:calc(6px*var(--page-scale));border-radius:4px;box-shadow:0 2px 6px rgba(0,0,0,0.12);text-align:center;color:#1e293b;'><img src='" + b.imageUrl2 + "' alt='Polaroid 2' style='width:100%;height:calc(80px*var(--page-scale));object-fit:cover;display:block;' /><div style='font-size:calc(9.5px*var(--page-scale));font-style:italic;margin-top:4px;'>" + (b.subtitle || '') + "</div></div>";
+                }
+                bHtml += "</div>";
+              } else if (b.type === 'comic-panel-grid') {
+                bHtml += "<div style='border:3px solid #000;border-radius:8px;overflow:hidden;background:#fff;color:#000;box-shadow:3px 3px 0 #000;'>";
+                if (b.soundFxBadge) bHtml += "<div style='background:#facc15;color:#000;font-weight:900;font-size:calc(10px*var(--page-scale));padding:2px 8px;text-transform:uppercase;border-bottom:2px solid #000;'>" + b.soundFxBadge + "</div>";
+                if (b.imageUrl) bHtml += "<img src='" + b.imageUrl + "' alt='Panel' style='width:100%;height:calc(115px*var(--page-scale));object-fit:cover;display:block;' />";
+                if (b.speechBubbleText) bHtml += "<div style='padding:calc(6px*var(--page-scale));font-size:calc(10px*var(--page-scale));font-weight:700;background:#fff;border-top:2px solid #000;'>💬 " + b.speechBubbleText + "</div>";
+                bHtml += "</div>";
+              } else if (b.type === 'blueprint-spec') {
+                bHtml += "<div style='padding:calc(8px*var(--page-scale));border-radius:8px;border:1px dashed var(--accent-green);font-family:monospace;'>";
+                bHtml += "<div style='display:flex;justify-content:space-between;font-size:calc(8.5px*var(--page-scale));opacity:0.75;margin-bottom:4px;'><span>" + (b.specCoordinates || '') + "</span><span>" + (b.scaleRatio || '') + "</span></div>";
+                if (b.title) bHtml += "<div style='font-size:calc(11.5px*var(--page-scale));font-weight:800;margin-bottom:2px;'>" + b.title + "</div>";
+                if (b.paragraph1) bHtml += "<div style='font-size:calc(9.5px*var(--page-scale));line-height:1.4;margin-bottom:4px;'>" + b.paragraph1 + "</div>";
+                if (b.materialDetails) bHtml += "<div style='font-size:calc(9px*var(--page-scale));color:var(--accent-green);font-weight:700;'>⚙ " + b.materialDetails + "</div>";
+                bHtml += "</div>";
+              } else if (b.type === 'poetry-calligraphy') {
+                bHtml += "<div style='text-align:center;padding:calc(8px*var(--page-scale));'>";
+                if (b.title) bHtml += "<div style='font-size:calc(12.5px*var(--page-scale));font-style:italic;font-weight:800;color:var(--accent-green);margin-bottom:4px;'>" + b.title + "</div>";
+                if (b.paragraph1) bHtml += "<div style='font-size:calc(11px*var(--page-scale));font-style:italic;line-height:1.65;white-space:pre-line;'>" + b.paragraph1 + "</div>";
+                if (b.authorName) bHtml += "<div style='font-size:calc(9px*var(--page-scale));text-transform:uppercase;letter-spacing:1.5px;color:var(--accent-green);margin-top:6px;'>— " + b.authorName + " —</div>";
+                bHtml += "</div>";
               }
             });
 
@@ -1488,7 +1775,7 @@ export function generateStandaloneFlipbookHtml(
               return (
                 "<div class='leaf-face " +
                 sideClass +
-                " cover-front cover-front-image is-cover' style='padding:0;overflow:hidden;position:relative;background:#111;cursor:pointer;' onclick='flipNext()'>" +
+                " cover-front cover-front-image is-cover' style='padding:0;overflow:hidden;position:relative;background:#111;cursor:pointer;'>" +
                 "<img src='" +
                 coverImg +
                 "' alt='" +
@@ -1554,7 +1841,7 @@ export function generateStandaloneFlipbookHtml(
               "<p class='cover-sub-title'>" +
               (faceData.subtitle || bookProject.subtitle) +
               "</p>" +
-              "<div class='cover-open-action' onclick='flipNext()'>" +
+              "<div class='cover-open-action'>" +
               "<span>Tap or Click to Open</span>" +
               "<svg style='width:16px;height:16px;' viewBox='0 0 24 24' fill='none' stroke='currentColor'><polyline points='9 18 15 12 9 6'></polyline></svg>" +
               "</div>" +
@@ -1694,14 +1981,8 @@ export function generateStandaloneFlipbookHtml(
           if (faceData.template === "table-of-contents") {
             var tocItemsHtml = "";
             (faceData.bulletItems || []).forEach(function (ch, idx) {
-              var targetLeaf = Math.floor((idx + 1) / 2);
-              var mobileTarget = idx + 1;
               tocItemsHtml +=
-                "<div class='toc-item' onclick='goToChapter(" +
-                targetLeaf +
-                ", " +
-                mobileTarget +
-                ")' style='display:flex;align-items:center;justify-content:space-between;padding:calc(7px*var(--page-scale)) calc(10px*var(--page-scale));border-radius:6px;background:#f7faf8;border:1px solid #e5eee8;cursor:pointer;margin-bottom:calc(6px*var(--page-scale));font-size:calc(12px*var(--page-scale));'>" +
+                "<div class='toc-item' style='display:flex;align-items:center;justify-content:space-between;padding:calc(7px*var(--page-scale)) calc(10px*var(--page-scale));border-radius:6px;background:#f7faf8;border:1px solid #e5eee8;margin-bottom:calc(6px*var(--page-scale));font-size:calc(12px*var(--page-scale));'>" +
                 "<span style='font-weight:800;color:var(--accent-green);width:24px;'>" +
                 (idx + 1 < 10 ? "0" + (idx + 1) : idx + 1) +
                 "</span>" +
@@ -1727,7 +2008,7 @@ export function generateStandaloneFlipbookHtml(
               "<div style='display:flex;flex-direction:column;margin:auto 0;'>" +
               tocItemsHtml +
               "</div>" +
-              "<div class='page-footer-tag'><span>Inside Front Cover</span><span>Tap any chapter to jump</span></div>" +
+              "<div class='page-footer-tag'><span>Inside Front Cover</span><span>Drag or click corner to flip</span></div>" +
               "</div>" +
               "<div class='leaf-lighting-overlay'></div>" +
               "</div>"
@@ -1970,26 +2251,26 @@ export function generateStandaloneFlipbookHtml(
           return html;
         }
 
-        // Construct 3D Sheets
+        // Construct 3D Corner-Curl Flipbook (StPageFlip + Mobile Portrait Bilateral Patch)
         function constructFlipbook() {
           var container = document.getElementById("book-container");
-          if (!container) return;
+          if (!container || !window.PageFlip) return;
 
-          container.innerHTML = '<div class="book-spine-shadow"></div>';
-          leaves = [];
+          if (pageFlipInstance) {
+            try {
+              pageFlipInstance.destroy();
+            } catch (err) {}
+            pageFlipInstance = null;
+          }
 
           var isMobile = document.body.classList.contains("is-mobile");
           var rawPages = bookProject.pages || [];
           var pages = rawPages.slice();
 
           if (!isMobile) {
-            // If pages count is odd and last page is cover-back, insert blank inside page before it
-            if (
-              pages.length > 1 &&
-              pages.length % 2 !== 0 &&
-              pages[pages.length - 1] &&
-              pages[pages.length - 1].template === "cover-back"
-            ) {
+            // Ensure total page count on desktop 2-page spread is even so the last page
+            // always closes as a solo Back Cover with nothing behind it on the right side
+            if (pages.length > 1 && pages.length % 2 !== 0) {
               var lastBack = pages.pop();
               pages.push({
                 id: "p-inside-back-blank",
@@ -2003,84 +2284,494 @@ export function generateStandaloneFlipbookHtml(
             }
           }
 
-          if (isMobile) {
-            totalLeaves = Math.max(0, pages.length - 1);
-
-            for (var m = 0; m < totalLeaves; m++) {
-              var leafM = document.createElement("div");
-              leafM.className = "book-leaf";
-              leafM.dataset.leafIndex = m;
-
-              var frontPage = pages[m];
-              var backPage;
-              var backPageNum;
-
-              if (m === totalLeaves - 1) {
-                // Last leaf on mobile: Back face is the Back Cover!
-                backPage = pages[pages.length - 1];
-                backPageNum = pages.length;
-              } else {
-                // Inside leaves: Back face is clean blank watermark page
-                backPage = {
-                  template: "blank",
-                  title: "",
-                  headerTag: bookProject.title,
-                  footerNote: bookProject.author,
-                };
-                backPageNum = m + 1;
-              }
-
-              leafM.innerHTML =
-                buildFaceHTML(frontPage, "face-front", m + 1) +
-                buildFaceHTML(backPage, "face-back", backPageNum);
-
-              container.appendChild(leafM);
-              leaves.push(leafM);
-            }
-          } else {
-            totalLeaves = Math.ceil(pages.length / 2);
-
-            for (var d = 0; d < totalLeaves; d++) {
-              var leafD = document.createElement("div");
-              leafD.className = "book-leaf";
-              leafD.dataset.leafIndex = d;
-
-              var frontPage = pages[d * 2];
-              var backPage = pages[d * 2 + 1];
-
-              leafD.innerHTML =
-                buildFaceHTML(frontPage, "face-front", d * 2 + 1) +
-                buildFaceHTML(backPage, "face-back", d * 2 + 2);
-
-              container.appendChild(leafD);
-              leaves.push(leafD);
-            }
-          }
+          totalPagesCount = pages.length;
+          if (totalPagesCount === 0) return;
 
           if (!hasInitializedPage && initialTargetPage > 0) {
             hasInitializedPage = true;
-            if (isMobile) {
-              currentLeafIndex = Math.min(initialTargetPage, totalLeaves - 1);
-            } else {
-              currentLeafIndex = Math.ceil(initialTargetPage / 2);
-            }
-            if (currentLeafIndex > totalLeaves) currentLeafIndex = totalLeaves;
-            if (currentLeafIndex < 0) currentLeafIndex = 0;
+            currentPageIndex = Math.max(0, Math.min(totalPagesCount - 1, initialTargetPage));
+          } else {
+            currentPageIndex = Math.max(0, Math.min(totalPagesCount - 1, currentPageIndex));
           }
 
-          updateLeafZIndices();
+          var totalW = isMobile ? currentPageW : currentPageW * 2;
+          container.style.width = totalW + "px";
+          container.style.height = currentPageH + "px";
+          container.innerHTML =
+            '<div class="book-spine-shadow" id="book-spine-shadow"></div>' +
+            '<div id="stf-mount" style="width:' +
+            totalW +
+            "px;height:" +
+            currentPageH +
+            'px;position:relative;"></div>';
+
+          var mountEl = document.getElementById("stf-mount");
+          var bookEl = document.createElement("div");
+          bookEl.style.width = totalW + "px";
+          bookEl.style.height = currentPageH + "px";
+          bookEl.style.position = "relative";
+          mountEl.appendChild(bookEl);
+
+          var pageElements = [];
+          for (var idx = 0; idx < pages.length; idx++) {
+            var pageEl = document.createElement("div");
+            pageEl.className = "flip-page-item";
+            pageEl.dataset.density = "soft";
+            pageEl.style.width = currentPageW + "px";
+            pageEl.style.height = currentPageH + "px";
+            pageEl.style.overflow = "hidden";
+
+            var isLeftSpread = !isMobile && idx > 0 && idx % 2 === 1;
+            var sideClass = isLeftSpread ? "face-left" : "face-front";
+            pageEl.innerHTML = buildFaceHTML(pages[idx], sideClass, idx + 1);
+
+            bookEl.appendChild(pageEl);
+            pageElements.push(pageEl);
+          }
+
+          var pf = new window.PageFlip(bookEl, {
+            width: currentPageW,
+            height: currentPageH,
+            size: "fixed",
+            autoSize: false,
+            minWidth: currentPageW,
+            maxWidth: currentPageW,
+            minHeight: currentPageH,
+            maxHeight: currentPageH,
+            maxShadowOpacity: 0.55,
+            showCover: !isMobile,
+            mobileScrollSupport: false,
+            usePortrait: isMobile,
+            startPage: currentPageIndex,
+            drawShadow: true,
+            flippingTime: 780,
+            swipeDistance: 20,
+            clickEventForward: true,
+            useMouseEvents: true,
+            showPageCorners: true,
+            disableFlipByClick: false,
+          });
+
+          pf.loadFromHTML(pageElements);
+
+          // Apply Soft Clip-Path Fix & Mobile Portrait Bilateral Corner-Curl Patch
+          var render = pf.getRender();
+          var pageCollection = pf.getPageCollection();
+          var fc = pf.getFlipController();
+          var ui = pf.getUI();
+
+          // Ensure quick mobile touch taps (< 250ms) also trigger page flip
+          if (ui && ui.distElement && ui.onTouchEnd) {
+            ui.distElement.removeEventListener("touchend", ui.onTouchEnd);
+            window.removeEventListener("touchend", ui.onTouchEnd);
+            ui.onTouchEnd = function (t) {
+              if (t.changedTouches.length > 0) {
+                var e = t.changedTouches[0];
+                var i = ui.getMousePos(e.clientX, e.clientY);
+                var s = false;
+                if (ui.touchPoint !== null) {
+                  var dx = i.x - ui.touchPoint.point.x;
+                  var dy = Math.abs(i.y - ui.touchPoint.point.y);
+                  if (
+                    Math.abs(dx) > ui.swipeDistance &&
+                    dy < 2 * ui.swipeDistance &&
+                    Date.now() - ui.touchPoint.time < ui.swipeTimeout
+                  ) {
+                    var corner =
+                      ui.touchPoint.point.y < ui.app.getRender().getRect().height / 2
+                        ? "top"
+                        : "bottom";
+                    if (dx > 0) {
+                      ui.app.flipPrev(corner);
+                    } else {
+                      ui.app.flipNext(corner);
+                    }
+                    s = true;
+                  } else if (!ui.app.isUserTouch) {
+                    ui.app.startUserTouch(ui.touchPoint.point);
+                  }
+                  ui.touchPoint = null;
+                }
+                ui.app.userStop(i, s);
+              }
+            };
+            window.addEventListener("touchend", ui.onTouchEnd);
+          }
+
+          if (render && pageCollection && fc) {
+            function patchPageGutterClip(pageObj) {
+              if (!pageObj || pageObj.__gutterPatched) return;
+              pageObj.__gutterPatched = true;
+              pageObj.setDensity("soft");
+              pageObj.setDrawingDensity("soft");
+
+              var origDrawSoft = pageObj.drawSoft ? pageObj.drawSoft.bind(pageObj) : null;
+              if (origDrawSoft) {
+                pageObj.drawSoft = function (globalPos, baseStyle) {
+                  if (!baseStyle) baseStyle = "";
+                  if (
+                    this !== this.render.flippingPage ||
+                    this.render.getOrientation() === "portrait" ||
+                    this.render.bottomPage === this.render.flippingPage
+                  ) {
+                    return origDrawSoft(globalPos, baseStyle);
+                  }
+
+                  var rect = this.render.getRect();
+                  var pw = rect.pageWidth;
+                  var dir = this.render.getDirection();
+                  var gutterHidePx = Math.min(24, Math.round(pw * 0.055));
+                  var cosA = Math.cos(this.state.angle);
+                  var sinA = Math.sin(this.state.angle);
+
+                  var polyPoints = "polygon( ";
+                  for (var aIdx = 0; aIdx < this.state.area.length; aIdx++) {
+                    var pt = this.state.area[aIdx];
+                    if (pt !== null) {
+                      var lx = dir === 1 ? -pt.x + this.state.position.x : pt.x - this.state.position.x;
+                      var ly = pt.y - this.state.position.y;
+                      var rx = lx * cosA + ly * sinA;
+                      var ry = ly * cosA - lx * sinA;
+                      rx = dir === 1 ? Math.max(gutterHidePx, rx) : Math.min(pw - gutterHidePx, rx);
+                      polyPoints += rx.toFixed(1) + "px " + ry.toFixed(1) + "px, ";
+                    }
+                  }
+                  polyPoints = polyPoints.slice(0, -2) + ")";
+
+                  var transformCss =
+                    this.render.isSafari() && this.state.angle === 0
+                      ? "transform: translate(" + globalPos.x + "px, " + globalPos.y + "px);"
+                      : "transform: translate3d(" +
+                        globalPos.x +
+                        "px, " +
+                        globalPos.y +
+                        "px, 0) rotate(" +
+                        this.state.angle +
+                        "rad);";
+
+                  this.element.style.cssText =
+                    baseStyle +
+                    "transform-origin: 0 0; clip-path: " +
+                    polyPoints +
+                    "; -webkit-clip-path: " +
+                    polyPoints +
+                    ";" +
+                    transformCss;
+                };
+              }
+            }
+
+            var allPages = pageCollection.getPages();
+            for (var pIdx = 0; pIdx < allPages.length; pIdx++) {
+              patchPageGutterClip(allPages[pIdx]);
+            }
+
+            if (render.drawOuterShadow) {
+              var origDrawOuterShadow = render.drawOuterShadow.bind(render);
+              render.drawOuterShadow = function () {
+                origDrawOuterShadow();
+                if (this.outerShadow) {
+                  this.outerShadow.style.zIndex = String(this.getSettings().startZIndex + 4);
+                }
+              };
+            }
+
+            // Helper: Compute unpeeled polygon clip-path for the stationary page being lifted
+            // so the peeled area behind First Cover (Page 2) and Last Cover is 100% clipped away
+            function getUnpeeledClipPolygon(calc, direction) {
+              if (!calc) return null;
+              var pw = calc.pageWidth;
+              var ph = calc.pageHeight;
+              var topPt = calc.topIntersectPoint;
+              var sidePt = calc.sideIntersectPoint;
+              var botPt = calc.bottomIntersectPoint;
+
+              var validCount = (topPt ? 1 : 0) + (sidePt ? 1 : 0) + (botPt ? 1 : 0);
+              if (validCount < 2) {
+                if (calc.position && calc.position.x < pw * 0.5) {
+                  return "polygon(0px 0px, 0px 0px, 0px 0px)";
+                }
+                return null;
+              }
+
+              var pts = [{ x: 0, y: 0 }];
+              if (topPt) {
+                pts.push(topPt);
+              } else {
+                pts.push({ x: pw, y: 0 });
+              }
+              if (sidePt) {
+                pts.push(sidePt);
+              }
+              if (botPt) {
+                pts.push(botPt);
+              } else {
+                pts.push({ x: pw, y: ph });
+              }
+              pts.push({ x: 0, y: ph });
+
+              var poly = [];
+              for (var k = 0; k < pts.length; k++) {
+                var p = pts[k];
+                var clampedX = Math.max(0, Math.min(pw, p.x));
+                var clampedY = Math.max(0, Math.min(ph, p.y));
+                var cx = direction === 1 ? pw - clampedX : clampedX;
+                var cy = clampedY;
+                poly.push(cx.toFixed(1) + "px " + cy.toFixed(1) + "px");
+              }
+              return "polygon(" + poly.join(", ") + ")";
+            }
+
+            // 1. Keep boundsRect.left = 0 when flipping backward in portrait mode
+            var origGetRect = render.getRect.bind(render);
+            render.getRect = function () {
+              if (this.boundsRect === null) this.calculateBoundsRect();
+              if (this.orientation === "portrait" && this.direction === 1) {
+                return Object.assign({}, this.boundsRect, { left: 0 });
+              }
+              return origGetRect();
+            };
+
+            // 2a. Clip leftPage to the unpeeled polygon during backward flip (direction === 1)
+            //     so Page 2 (leftPage) never shows behind the closing Front Cover!
+            var origDrawLeftPage = render.drawLeftPage.bind(render);
+            render.drawLeftPage = function () {
+              if (this.orientation === "portrait") return;
+              if (this.leftPage === null) return;
+              origDrawLeftPage();
+              if (this.direction === 1 && this.flippingPage !== null && fc.getCalculation() !== null) {
+                var clipPoly = getUnpeeledClipPolygon(fc.getCalculation(), 1);
+                var el = this.leftPage.getElement();
+                if (clipPoly && el) {
+                  el.style.clipPath = clipPoly;
+                  el.style.webkitClipPath = clipPoly;
+                }
+              }
+            };
+
+            // 2b. Clip rightPage to the unpeeled polygon during forward flip (direction === 0)
+            //     and portrait backward flip so the inside-back page never shows behind the Last Cover!
+            var origDrawRightPage = render.drawRightPage.bind(render);
+            render.drawRightPage = function () {
+              if (this.rightPage === null) return;
+              if (this.orientation === "portrait" && this.direction === 1) {
+                this.rightPage.simpleDraw(0);
+                if (this.flippingPage !== null && fc.getCalculation() !== null) {
+                  var clipPolyPortrait = getUnpeeledClipPolygon(fc.getCalculation(), 1);
+                  var elPortrait = this.rightPage.getElement();
+                  if (clipPolyPortrait && elPortrait) {
+                    elPortrait.style.clipPath = clipPolyPortrait;
+                    elPortrait.style.webkitClipPath = clipPolyPortrait;
+                  }
+                }
+                return;
+              }
+              origDrawRightPage();
+              if (this.direction === 0 && this.flippingPage !== null && fc.getCalculation() !== null) {
+                var clipPolyRight = getUnpeeledClipPolygon(fc.getCalculation(), 0);
+                var elRight = this.rightPage.getElement();
+                if (clipPolyRight && elRight) {
+                  elRight.style.clipPath = clipPolyRight;
+                  elRight.style.webkitClipPath = clipPolyRight;
+                }
+              }
+            };
+
+            // 3. Always draw bottomPage with 'soft' polygon clip-path so next/prev page is ONLY revealed
+            //    behind the peeled fold line (never unclipped on initial click)
+            render.drawBottomPage = function () {
+              if (this.bottomPage === null) return;
+              if (this.bottomPage === this.flippingPage) return;
+              var startZIndex = this.getSettings().startZIndex;
+              var el = this.bottomPage.getElement();
+              el.style.zIndex = String(startZIndex + 3);
+              this.bottomPage.draw("soft");
+            };
+
+            // 4. Use a temporary copy for portrait BACK flip so current page curls from Left to Right
+            var origGetFlippingPage = pageCollection.getFlippingPage.bind(pageCollection);
+            pageCollection.getFlippingPage = function (direction) {
+              if (this.render.getOrientation() === "portrait" && direction === 1) {
+                return this.pages[this.currentSpreadIndex].newTemporaryCopy();
+              }
+              return origGetFlippingPage(direction);
+            };
+
+            // 5. Reset direction to 0 after flip finishes in portrait mode
+            var origReset = fc.reset.bind(fc);
+            fc.reset = function () {
+              origReset();
+              if (this.render.getOrientation() === "portrait") {
+                this.render.setDirection(0);
+              }
+            };
+
+            // 6. Accurate spread-based direction bounds check for both odd and even page counts
+            fc.checkDirection = function (direction) {
+              var spreads = pageCollection.getSpread();
+              var cur = pageCollection.getCurrentSpreadIndex();
+              return direction === 0 ? cur < spreads.length - 1 : cur > 0;
+            };
+
+            // 7. Detect Left half (direction 1 = Previous) vs Right half (direction 0 = Next) in portrait mode
+            var origGetDirectionByPoint = fc.getDirectionByPoint.bind(fc);
+            fc.getDirectionByPoint = function (touchPos) {
+              if (this.render.getOrientation() === "portrait") {
+                var b = this.render.boundsRect || this.getBoundsRect();
+                var screenX = touchPos.x - b.pageWidth;
+                return screenX <= b.pageWidth * 0.45 ? 1 : 0;
+              }
+              return origGetDirectionByPoint(touchPos);
+            };
+
+            // 8. Enable corner peel on ALL 4 corners in portrait mode
+            var origIsPointOnCorners = fc.isPointOnCorners.bind(fc);
+            fc.isPointOnCorners = function (globalPos) {
+              if (this.render.getOrientation() === "portrait") {
+                var b = this.render.boundsRect || this.getBoundsRect();
+                var pw = b.pageWidth;
+                var ph = b.height;
+                var cornerArea = Math.min(pw, ph) * 0.22;
+                var gx = globalPos.x;
+                var gy = globalPos.y;
+                if (gx < 0 || gx > pw || gy < 0 || gy > ph) return false;
+                var nearLeft = gx <= cornerArea;
+                var nearRight = gx >= pw - cornerArea;
+                var nearTop = gy <= cornerArea;
+                var nearBottom = gy >= ph - cornerArea;
+                return (nearLeft || nearRight) && (nearTop || nearBottom);
+              }
+              return origIsPointOnCorners(globalPos);
+            };
+
+            // 9. Clean up any active corner-hover peel before starting a drag fold or click flip
+            var origFold = fc.fold.bind(fc);
+            fc.fold = function (globalPos) {
+              if (this.state !== "user_fold" && this.calc !== null) {
+                this.render.finishAnimation();
+                this.reset();
+              }
+              origFold(globalPos);
+            };
+
+            var origFlip = fc.flip.bind(fc);
+            fc.flip = function (globalPos) {
+              if (this.state !== "user_fold" && this.calc !== null) {
+                this.render.finishAnimation();
+                this.reset();
+              }
+              origFlip(globalPos);
+            };
+
+            // 10. Smooth threshold completion on touch/mouse release for both Next (dir 0) & Prev (dir 1)
+            //     Note: In PageFlipCalculator, pos.x is already in local mirrored coordinates
+            //     (+pageWidth = unflipped start edge, -pageWidth = flipped target edge) for BOTH directions!
+            var origStopMove = fc.stopMove.bind(fc);
+            fc.stopMove = function () {
+              if (this.calc === null) return;
+              if (this.state === "user_fold") {
+                var pos = this.calc.getPosition();
+                var bounds = this.getBoundsRect();
+                var targetY = this.calc.getCorner() === "bottom" ? bounds.height : 0;
+                if (pos.x <= bounds.pageWidth * 0.65) {
+                  this.animateFlippingTo(pos, { x: -bounds.pageWidth, y: targetY }, true);
+                } else {
+                  this.animateFlippingTo(pos, { x: bounds.pageWidth, y: targetY }, false);
+                }
+                return;
+              }
+              origStopMove();
+            };
+
+            // 11. Button-triggered flipPrev / flipNext in portrait mode also curl from Left/Right corners
+            var origFlipPrev = fc.flipPrev.bind(fc);
+            fc.flipPrev = function (corner) {
+              if (!corner) corner = "bottom";
+              if (this.render.getOrientation() === "portrait") {
+                if (pageCollection.getCurrentSpreadIndex() <= 0) return;
+                var b = this.render.boundsRect || this.getBoundsRect();
+                this.flip({
+                  x: 16,
+                  y: corner === "top" ? 16 : b.height - 16,
+                });
+                return;
+              }
+              origFlipPrev(corner);
+            };
+
+            var origFlipNext = fc.flipNext.bind(fc);
+            fc.flipNext = function (corner) {
+              if (!corner) corner = "bottom";
+              if (this.render.getOrientation() === "portrait") {
+                var spreads = pageCollection.getSpread();
+                if (pageCollection.getCurrentSpreadIndex() >= spreads.length - 1) return;
+                var b = this.render.boundsRect || this.getBoundsRect();
+                this.flip({
+                  x: b.pageWidth - 16,
+                  y: corner === "top" ? 16 : b.height - 16,
+                });
+                return;
+              }
+              origFlipNext(corner);
+            };
+          }
+
+          pf.on("flip", function (e) {
+            currentPageIndex = typeof e.data === "number" ? e.data : 0;
+            updateNavButtons();
+            updateBookCoverPosition();
+          });
+
+          pf.on("changeState", function (e) {
+            var state = e.data;
+            if (state === "flipping" || state === "user_fold") {
+              isAnimating = true;
+              updateBookCoverPosition();
+              if (state === "flipping") {
+                var now = Date.now();
+                if (now - lastFlipTime > 250) {
+                  lastFlipTime = now;
+                  playPageTurnSound();
+                }
+              }
+            } else if (state === "read") {
+              isAnimating = false;
+              updateBookCoverPosition();
+            }
+          });
+
+          pageFlipInstance = pf;
           updateNavButtons();
           updateBookCoverPosition();
+        }
+
+        function isAtLastSpread() {
+          if (!pageFlipInstance) return currentPageIndex >= totalPagesCount - 1;
+          var pc = pageFlipInstance.getPageCollection();
+          if (!pc) return currentPageIndex >= totalPagesCount - 1;
+          return pc.getCurrentSpreadIndex() >= pc.getSpread().length - 1;
         }
 
         function updateBookCoverPosition() {
           var container = document.getElementById("book-container");
           if (!container) return;
+          var isMobile = document.body.classList.contains("is-mobile");
 
-          if (currentLeafIndex === 0) {
+          if (isAnimating) {
+            container.classList.add("is-flipping-active");
+          } else {
+            container.classList.remove("is-flipping-active");
+          }
+
+          if (!isMobile && currentPageIndex === 0 && !isAnimating) {
             container.classList.add("is-cover-closed");
             container.classList.remove("is-back-closed");
-          } else if (currentLeafIndex >= totalLeaves) {
+          } else if (
+            !isMobile &&
+            totalPagesCount > 1 &&
+            currentPageIndex >= totalPagesCount - 1 &&
+            !isAnimating
+          ) {
             container.classList.add("is-back-closed");
             container.classList.remove("is-cover-closed");
           } else {
@@ -2088,25 +2779,50 @@ export function generateStandaloneFlipbookHtml(
           }
         }
 
-        function updateLeafZIndices() {
-          for (var i = 0; i < leaves.length; i++) {
-            var leaf = leaves[i];
-            if (i < currentLeafIndex) {
-              leaf.classList.add("flipped");
-              leaf.style.zIndex = i + 1;
-            } else {
-              leaf.classList.remove("flipped");
-              leaf.style.zIndex = leaves.length - i + 10;
-            }
-          }
-        }
-
         function updateNavButtons() {
           var prevBtn = document.getElementById("btn-prev-corner");
           var nextBtn = document.getElementById("btn-next-corner");
-          if (prevBtn) prevBtn.disabled = currentLeafIndex <= 0;
-          if (nextBtn) nextBtn.disabled = currentLeafIndex >= totalLeaves;
+          if (prevBtn) prevBtn.disabled = currentPageIndex <= 0;
+          if (nextBtn) nextBtn.disabled = isAtLastSpread();
+          var jumpInput = document.getElementById("page-jump-input");
+          var jumpTotal = document.getElementById("page-jump-total");
+          if (jumpInput) {
+            jumpInput.max = String(totalPagesCount);
+            if (document.activeElement !== jumpInput) {
+              jumpInput.value = String(currentPageIndex + 1);
+            }
+          }
+          if (jumpTotal) {
+            jumpTotal.textContent = "/ " + totalPagesCount;
+          }
         }
+
+        window.handlePageJumpKey = function (e) {
+          e.stopPropagation();
+          if (e.key === "Enter") {
+            var inputEl = e.target;
+            var parsed = parseInt(inputEl.value, 10);
+            if (!isNaN(parsed)) {
+              var targetIdx = Math.max(0, Math.min(totalPagesCount - 1, parsed - 1));
+              inputEl.value = String(targetIdx + 1);
+              window.goToLeaf(targetIdx);
+            } else {
+              inputEl.value = String(currentPageIndex + 1);
+            }
+            inputEl.blur();
+          }
+        };
+
+        window.handlePageJumpBlur = function (inputEl) {
+          var parsed = parseInt(inputEl.value, 10);
+          if (!isNaN(parsed)) {
+            var targetIdx = Math.max(0, Math.min(totalPagesCount - 1, parsed - 1));
+            inputEl.value = String(targetIdx + 1);
+            window.goToLeaf(targetIdx);
+          } else {
+            inputEl.value = String(currentPageIndex + 1);
+          }
+        };
 
         // Standard ISO 216 A4 Aspect Ratio
         var A4_RATIO = Math.SQRT2;
@@ -2115,11 +2831,22 @@ export function generateStandaloneFlipbookHtml(
           var wrapper = document.getElementById("flipbook-wrapper");
           if (!wrapper) return;
 
-          var vw = wrapper.clientWidth || window.innerWidth || 800;
-          var vh = wrapper.clientHeight || window.innerHeight || 600;
+          var isFull = !!(
+            document.fullscreenElement ||
+            document.webkitFullscreenElement ||
+            document.mozFullScreenElement ||
+            document.msFullscreenElement ||
+            wrapper.classList.contains("is-pseudo-fullscreen")
+          );
+
+          var vw = isFull
+            ? window.innerWidth || wrapper.clientWidth || 800
+            : wrapper.clientWidth || window.innerWidth || 800;
+          var vh = isFull
+            ? window.innerHeight || wrapper.clientHeight || 600
+            : wrapper.clientHeight || window.innerHeight || 600;
 
           var isMobile = vw < 768 || (vw < 900 && vh > vw);
-          var prevMobileState = document.body.classList.contains("is-mobile");
 
           if (isMobile) {
             document.body.classList.add("is-mobile");
@@ -2129,8 +2856,10 @@ export function generateStandaloneFlipbookHtml(
 
           var pageW, pageH;
           if (isMobile) {
-            var maxAvailW = Math.min(vw - 28, 520);
-            var maxAvailH = vh - 96;
+            var mobWPad = isFull ? 12 : 28;
+            var mobHPad = isFull ? 48 : 96;
+            var maxAvailW = Math.min(vw - mobWPad, isFull ? 960 : 520);
+            var maxAvailH = vh - mobHPad;
 
             if (maxAvailW * A4_RATIO <= maxAvailH) {
               pageW = Math.max(240, maxAvailW);
@@ -2140,8 +2869,10 @@ export function generateStandaloneFlipbookHtml(
               pageW = Math.round(pageH / A4_RATIO);
             }
           } else {
-            var maxBookTotalW = Math.min(vw - 120, 1560);
-            var maxAvailHDesktop = vh - 90;
+            var deskWPad = isFull ? 28 : 120;
+            var deskHPad = isFull ? 32 : 90;
+            var maxBookTotalW = Math.min(vw - deskWPad, isFull ? 2400 : 1560);
+            var maxAvailHDesktop = vh - deskHPad;
 
             if ((maxBookTotalW / 2) * A4_RATIO <= maxAvailHDesktop) {
               pageW = Math.max(260, Math.floor(maxBookTotalW / 2));
@@ -2152,31 +2883,28 @@ export function generateStandaloneFlipbookHtml(
             }
           }
 
+          pageW = Math.round(pageW);
+          pageH = Math.round(pageH);
+          currentPageW = pageW;
+          currentPageH = pageH;
+
           var BASE_PAGE_W = 480;
           var scale = pageW / BASE_PAGE_W;
 
-          document.documentElement.style.setProperty(
-            "--page-w",
-            Math.round(pageW) + "px"
-          );
-          document.documentElement.style.setProperty(
-            "--page-h",
-            Math.round(pageH) + "px"
-          );
-          document.documentElement.style.setProperty(
-            "--page-scale",
-            scale.toFixed(4)
-          );
-          document.documentElement.style.setProperty(
-            "--a4-scale",
-            scale.toFixed(4)
-          );
+          document.documentElement.style.setProperty("--page-w", pageW + "px");
+          document.documentElement.style.setProperty("--page-h", pageH + "px");
+          document.documentElement.style.setProperty("--page-scale", scale.toFixed(4));
+          document.documentElement.style.setProperty("--a4-scale", scale.toFixed(4));
 
-          if (isMobile !== prevMobileState || leaves.length === 0) {
-            currentLeafIndex = Math.min(
-              currentLeafIndex,
-              totalLeaves > 0 ? totalLeaves : 0
-            );
+          if (
+            isMobile !== lastBuiltMobile ||
+            Math.abs(pageW - lastBuiltPageW) >= 2 ||
+            Math.abs(pageH - lastBuiltPageH) >= 2 ||
+            !pageFlipInstance
+          ) {
+            lastBuiltMobile = isMobile;
+            lastBuiltPageW = pageW;
+            lastBuiltPageH = pageH;
             constructFlipbook();
           }
         }
@@ -2184,75 +2912,37 @@ export function generateStandaloneFlipbookHtml(
         // Public Navigation Functions
         var lastFlipTime = 0;
         window.flipNext = function () {
+          if (!pageFlipInstance) return;
           var now = Date.now();
-          if (now - lastFlipTime < 450 || isAnimating || currentLeafIndex >= totalLeaves) return;
+          if (now - lastFlipTime < 280 || isAtLastSpread()) return;
           lastFlipTime = now;
-          isAnimating = true;
-
-          var leafToFlip = leaves[currentLeafIndex];
-          if (leafToFlip) {
-            leafToFlip.classList.add("is-flipping");
-            playPageTurnSound();
-            leafToFlip.classList.add("flipped");
-            currentLeafIndex++;
-            updateLeafZIndices();
-            updateNavButtons();
-            updateBookCoverPosition();
-
-            setTimeout(function () {
-              leafToFlip.classList.remove("is-flipping");
-              isAnimating = false;
-            }, 650);
-          } else {
-            isAnimating = false;
-          }
+          playPageTurnSound();
+          pageFlipInstance.flipNext("bottom");
         };
 
         window.flipPrev = function () {
+          if (!pageFlipInstance) return;
           var now = Date.now();
-          if (now - lastFlipTime < 450 || isAnimating || currentLeafIndex <= 0) return;
+          if (now - lastFlipTime < 280 || currentPageIndex <= 0) return;
           lastFlipTime = now;
-          isAnimating = true;
-
-          currentLeafIndex--;
-          var leafToUnflip = leaves[currentLeafIndex];
-          if (leafToUnflip) {
-            leafToUnflip.classList.add("is-flipping");
-            playPageTurnSound();
-            leafToUnflip.classList.remove("flipped");
-            updateLeafZIndices();
-            updateNavButtons();
-            updateBookCoverPosition();
-
-            setTimeout(function () {
-              leafToUnflip.classList.remove("is-flipping");
-              isAnimating = false;
-            }, 650);
-          } else {
-            isAnimating = false;
-          }
+          playPageTurnSound();
+          pageFlipInstance.flipPrev("bottom");
         };
 
         window.goToLeaf = function (targetIdx) {
-          if (isAnimating) return;
-          targetIdx = Math.max(0, Math.min(targetIdx, totalLeaves));
-          if (targetIdx === currentLeafIndex) return;
-
+          if (!pageFlipInstance) return;
+          var clamped = Math.max(0, Math.min(totalPagesCount - 1, targetIdx));
+          if (clamped === currentPageIndex) return;
           playPageTurnSound();
-          currentLeafIndex = targetIdx;
-          updateLeafZIndices();
+          pageFlipInstance.turnToPage(clamped);
+          currentPageIndex = clamped;
           updateNavButtons();
           updateBookCoverPosition();
         };
 
         window.goToChapter = function (deskIdx, mobIdx) {
-          var isMobile = document.body.classList.contains("is-mobile");
-          var target = isMobile
-            ? mobIdx !== undefined
-              ? mobIdx
-              : deskIdx
-            : deskIdx;
-          window.goToLeaf(target);
+          var pageTarget = mobIdx !== undefined ? mobIdx : deskIdx;
+          window.goToLeaf(pageTarget);
         };
 
         // Sound Toggle
@@ -2278,64 +2968,88 @@ export function generateStandaloneFlipbookHtml(
         // Fullscreen Toggle
         window.toggleFullscreen = function () {
           var wrapper = document.getElementById("flipbook-wrapper");
-          var isNativeFull =
+          if (!wrapper) return;
+          var isNativeFull = !!(
             document.fullscreenElement ||
             document.webkitFullscreenElement ||
             document.mozFullScreenElement ||
-            document.msFullscreenElement;
+            document.msFullscreenElement
+          );
+          var isPseudoFull = wrapper.classList.contains("is-pseudo-fullscreen");
 
-          if (
-            !isNativeFull &&
-            !wrapper.classList.contains("is-pseudo-fullscreen")
-          ) {
-            var req =
-              wrapper.requestFullscreen ||
-              wrapper.webkitRequestFullscreen ||
-              wrapper.mozRequestFullScreen ||
-              wrapper.msRequestFullscreen;
-            if (req) {
-              req
-                .call(wrapper)
-                .then(function () {
-                  updateFullscreenIcon(true);
-                  updateBookDimensions();
-                })
-                .catch(function () {
-                  wrapper.classList.add("is-pseudo-fullscreen");
-                  updateFullscreenIcon(true);
-                  updateBookDimensions();
-                });
-            } else {
-              wrapper.classList.add("is-pseudo-fullscreen");
-              updateFullscreenIcon(true);
-              updateBookDimensions();
-            }
-          } else {
+          if (isNativeFull || isPseudoFull) {
+            wrapper.classList.remove("is-pseudo-fullscreen");
+            updateFullscreenIcon(false);
             if (isNativeFull) {
               var exit =
                 document.exitFullscreen ||
                 document.webkitExitFullscreen ||
                 document.mozCancelFullScreen ||
                 document.msExitFullscreen;
-              if (exit) exit.call(document).catch(function () {});
+              if (exit) {
+                try {
+                  var exitRes = exit.call(document);
+                  if (exitRes && typeof exitRes.catch === "function") {
+                    exitRes.catch(function () {});
+                  }
+                } catch (err) {}
+              }
             }
-            wrapper.classList.remove("is-pseudo-fullscreen");
-            updateFullscreenIcon(false);
-            updateBookDimensions();
+            setTimeout(updateBookDimensions, 60);
+            setTimeout(updateBookDimensions, 240);
+          } else {
+            var activatePseudo = function () {
+              wrapper.classList.add("is-pseudo-fullscreen");
+              updateFullscreenIcon(true);
+              setTimeout(updateBookDimensions, 60);
+            };
+
+            var req =
+              wrapper.requestFullscreen ||
+              wrapper.webkitRequestFullscreen ||
+              wrapper.mozRequestFullScreen ||
+              wrapper.msRequestFullscreen;
+            if (req) {
+              try {
+                var reqRes = req.call(wrapper);
+                if (reqRes && typeof reqRes.then === "function") {
+                  reqRes
+                    .then(function () {
+                      wrapper.classList.remove("is-pseudo-fullscreen");
+                      updateFullscreenIcon(true);
+                      setTimeout(updateBookDimensions, 80);
+                      setTimeout(updateBookDimensions, 240);
+                    })
+                    .catch(function () {
+                      activatePseudo();
+                    });
+                } else {
+                  updateFullscreenIcon(true);
+                  setTimeout(updateBookDimensions, 80);
+                }
+              } catch (err) {
+                activatePseudo();
+              }
+            } else {
+              activatePseudo();
+            }
           }
         };
 
         function updateFullscreenIcon(isFull) {
+          var wrapper = document.getElementById("flipbook-wrapper");
           if (typeof isFull === "undefined") {
             isFull = !!(
               document.fullscreenElement ||
               document.webkitFullscreenElement ||
               document.mozFullScreenElement ||
               document.msFullscreenElement ||
-              document
-                .getElementById("flipbook-wrapper")
-                .classList.contains("is-pseudo-fullscreen")
+              (wrapper && wrapper.classList.contains("is-pseudo-fullscreen"))
             );
+          }
+          var btn = document.getElementById("btn-fullscreen");
+          if (btn) {
+            btn.title = isFull ? "Minimize (Exit Fullscreen)" : "Maximize (Fullscreen)";
           }
           var icon = document.getElementById("icon-fullscreen");
           if (icon) {
@@ -2357,7 +3071,17 @@ export function generateStandaloneFlipbookHtml(
         ];
         fullscreenEvents.forEach(function (evt) {
           document.addEventListener(evt, function () {
-            updateFullscreenIcon();
+            var isNative = !!(
+              document.fullscreenElement ||
+              document.webkitFullscreenElement ||
+              document.mozFullScreenElement ||
+              document.msFullscreenElement
+            );
+            var wrapper = document.getElementById("flipbook-wrapper");
+            if (!isNative && wrapper) {
+              wrapper.classList.remove("is-pseudo-fullscreen");
+            }
+            updateFullscreenIcon(isNative);
             setTimeout(updateBookDimensions, 100);
           });
         });
@@ -2366,8 +3090,16 @@ export function generateStandaloneFlipbookHtml(
           window.print();
         };
 
-        // Keyboard Arrow Navigation
+        // Keyboard Arrow Navigation & Escape Fullscreen Exit
         window.addEventListener("keydown", function (e) {
+          if (e.key === "Escape") {
+            var wrapper = document.getElementById("flipbook-wrapper");
+            if (wrapper && wrapper.classList.contains("is-pseudo-fullscreen")) {
+              wrapper.classList.remove("is-pseudo-fullscreen");
+              updateFullscreenIcon(false);
+              setTimeout(updateBookDimensions, 60);
+            }
+          }
           var target = e.target || document.activeElement;
           if (
             target &&
@@ -2385,14 +3117,14 @@ export function generateStandaloneFlipbookHtml(
           }
         });
 
-        // Mouse Wheel & Trackpad Page Turning (Eliminates vertical scrolling, turns physical pages)
+        // Mouse Wheel & Trackpad Page Turning
         var lastWheelTime = 0;
         window.addEventListener(
           "wheel",
           function (e) {
             e.preventDefault();
             var now = Date.now();
-            if (now - lastWheelTime < 380) return;
+            if (now - lastWheelTime < 420) return;
 
             var delta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
             if (Math.abs(delta) > 18) {
@@ -2407,115 +3139,11 @@ export function generateStandaloneFlipbookHtml(
           { passive: false }
         );
 
-        // Touch & Swipe
-        var touchStartX = 0;
-        var touchStartY = 0;
-        var touchStartTime = 0;
-        var lastTouchEndTime = 0;
-        var bookStage = document.getElementById("book-stage");
-
-        bookStage.addEventListener(
-          "touchstart",
-          function (e) {
-            lastTouchEndTime = Date.now();
-            if (e.touches && e.touches.length > 0) {
-              touchStartX = e.touches[0].clientX;
-              touchStartY = e.touches[0].clientY;
-              touchStartTime = Date.now();
-            }
-          },
-          { passive: true }
-        );
-
-        bookStage.addEventListener(
-          "touchend",
-          function (e) {
-            lastTouchEndTime = Date.now();
-            if (!e.changedTouches || e.changedTouches.length === 0) return;
-            var touchEndX = e.changedTouches[0].clientX;
-            var touchEndY = e.changedTouches[0].clientY;
-            var diffX = touchEndX - touchStartX;
-            var diffY = Math.abs(touchEndY - touchStartY);
-            var duration = Date.now() - touchStartTime;
-
-            // Swipe Detection
-            if (Math.abs(diffX) > 40 && diffY < 100) {
-              if (diffX < 0) {
-                window.flipNext();
-              } else {
-                window.flipPrev();
-              }
-              return;
-            }
-
-            // Tap Detection
-            if (Math.abs(diffX) < 15 && diffY < 15 && duration < 400) {
-              var target = e.target;
-              if (
-                target.closest("button") ||
-                target.closest(".mockup-toggle-pill") ||
-                target.closest(".toc-item") ||
-                target.closest(".cover-open-action") ||
-                target.closest(".top-floating-controls") ||
-                target.closest(".corner-nav-btn")
-              ) {
-                return;
-              }
-
-              var rect = bookStage.getBoundingClientRect();
-              var tapX = touchEndX - rect.left;
-              var stageMidX = rect.width / 2;
-
-              if (tapX > stageMidX) {
-                if (currentLeafIndex >= totalLeaves) {
-                  window.flipPrev();
-                } else {
-                  window.flipNext();
-                }
-              } else {
-                window.flipPrev();
-              }
-            }
-          },
-          { passive: true }
-        );
-
-        // Click Navigation (Desktop & pointer devices)
-        bookStage.addEventListener("click", function (e) {
-          if (Date.now() - lastTouchEndTime < 650) return;
-
-          var target = e.target;
-          if (
-            target.closest("button") ||
-            target.closest(".mockup-toggle-pill") ||
-            target.closest(".toc-item") ||
-            target.closest(".cover-open-action") ||
-            target.closest(".top-floating-controls") ||
-            target.closest(".corner-nav-btn")
-          ) {
-            return;
-          }
-
-          var rect = bookStage.getBoundingClientRect();
-          var clickX = e.clientX - rect.left;
-          var stageMidX = rect.width / 2;
-
-          if (clickX > stageMidX) {
-            if (currentLeafIndex >= totalLeaves) {
-              window.flipPrev();
-            } else {
-              window.flipNext();
-            }
-          } else {
-            window.flipPrev();
-          }
-        });
-
         // Resize & Orientation Listeners
         var resizeTimer;
         window.addEventListener("resize", function () {
           clearTimeout(resizeTimer);
-          resizeTimer = setTimeout(updateBookDimensions, 100);
+          resizeTimer = setTimeout(updateBookDimensions, 120);
         });
 
         window.addEventListener("orientationchange", function () {

@@ -24,9 +24,77 @@ import { canExportHtml, recordExportHtml } from './utils/licenseManager';
 
 export default function App() {
   // Initialize with last worked project from localStorage if exists
-  const [book, setBook] = useState<BookProject>(() => {
+  const [book, setBookState] = useState<BookProject>(() => {
     return loadActiveBook() || INITIAL_BOOK_PROJECT;
   });
+
+  // Undo / Redo History Stack for Studio Editor
+  const [historyPast, setHistoryPast] = useState<BookProject[]>([]);
+  const [historyFuture, setHistoryFuture] = useState<BookProject[]>([]);
+  const lastHistoryPushRef = useRef<number>(0);
+
+  // Wrapper around setBookState that records Undo history
+  const setBook: React.Dispatch<React.SetStateAction<BookProject>> = React.useCallback(
+    (updater) => {
+      setBookState((prev) => {
+        const next = typeof updater === 'function' ? updater(prev) : updater;
+        if (next === prev) return prev;
+
+        const now = Date.now();
+        const isStructuralChange =
+          next.pages.length !== prev.pages.length ||
+          next.themeId !== prev.themeId ||
+          next.pages.some(
+            (p, idx) => (p.blocks?.length || 0) !== (prev.pages[idx]?.blocks?.length || 0)
+          );
+
+        // Always push snapshot on structural change or if > 450ms since last keystroke snapshot
+        if (isStructuralChange || now - lastHistoryPushRef.current > 450) {
+          const snapshot: BookProject = JSON.parse(JSON.stringify(prev));
+          setHistoryPast((past) => [...past.slice(-39), snapshot]);
+          setHistoryFuture([]);
+          lastHistoryPushRef.current = now;
+        }
+
+        return next;
+      });
+    },
+    []
+  );
+
+  // Reset book without pushing old book to history (e.g. when opening another project/template)
+  const resetBookProject = React.useCallback((newBook: BookProject) => {
+    setHistoryPast([]);
+    setHistoryFuture([]);
+    lastHistoryPushRef.current = 0;
+    setBookState(newBook);
+  }, []);
+
+  const handleUndo = React.useCallback(() => {
+    setHistoryPast((past) => {
+      if (past.length === 0) return past;
+      const previous = past[past.length - 1];
+      setBookState((current) => {
+        setHistoryFuture((future) => [JSON.parse(JSON.stringify(current)), ...future.slice(0, 39)]);
+        return previous;
+      });
+      lastHistoryPushRef.current = 0;
+      return past.slice(0, -1);
+    });
+  }, []);
+
+  const handleRedo = React.useCallback(() => {
+    setHistoryFuture((future) => {
+      if (future.length === 0) return future;
+      const next = future[0];
+      setBookState((current) => {
+        setHistoryPast((past) => [...past.slice(-39), JSON.parse(JSON.stringify(current))]);
+        return next;
+      });
+      lastHistoryPushRef.current = 0;
+      return future.slice(1);
+    });
+  }, []);
 
   const [activeNavView, setActiveNavView] = useState<AppNavView>('home');
   const [activePageIndex, setActivePageIndex] = useState<number>(0);
@@ -34,38 +102,30 @@ export default function App() {
   const [mobileViewTab, setMobileViewTab] = useState<'editor' | 'preview'>('preview');
   const [libraryCount, setLibraryCount] = useState<number>(() => getLibrary().length);
 
+  // Global Keyboard Shortcuts for Undo (Ctrl+Z / Cmd+Z) & Redo (Ctrl+Y / Cmd+Shift+Z) in Studio
+  useEffect(() => {
+    if (activeNavView !== 'studio') return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+      if (!isCtrlOrCmd) return;
+
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      } else if (key === 'y' || (key === 'z' && e.shiftKey)) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [activeNavView, handleUndo, handleRedo]);
+
   // PWA Install State & Utilities
   const { isInstallable, isInstalled, platform, promptInstall } = usePWAInstall();
-
-  // URL Deep-Linking & Public Reader Detection (?read=book-id or ?id=book-id)
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    const readId = params.get('read') || params.get('id') || params.get('view');
-    const pageParam = params.get('p') || params.get('page');
-
-    if (readId) {
-      // Attempt loading from IndexedDB
-      loadBookFromIndexedDB(readId).then((loaded) => {
-        if (loaded) {
-          setBook(loaded);
-          if (pageParam) {
-            const pageNum = parseInt(pageParam, 10);
-            if (!isNaN(pageNum)) setActivePageIndex(Math.max(0, pageNum - 1));
-          }
-          setActiveNavView('reader');
-        } else {
-          // If not in IndexedDB, check local library
-          const lib = getLibrary();
-          const found = lib.find((b) => b.id === readId);
-          if (found) {
-            setBook(found.project);
-            setActiveNavView('reader');
-          }
-        }
-      });
-    }
-  }, []);
 
   // Modals
   const [previewingTemplate, setPreviewingTemplate] = useState<TemplatePreset | null>(null);
@@ -74,6 +134,98 @@ export default function App() {
   const [isPdfModalOpen, setIsPdfModalOpen] = useState<boolean>(false);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState<boolean>(false);
   const [isLicenseModalOpen, setIsLicenseModalOpen] = useState<boolean>(false);
+
+  // URL Deep-Linking, SEO View Routing (?view=templates | pdf-to-flipbook | studio) & Public Reader Detection (?read=book-id)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const viewParam = params.get('view');
+    const readId = params.get('read') || params.get('id');
+    const pageParam = params.get('p') || params.get('page');
+
+    // Handle Sitemap & Search Engine Deep-Linked Views first
+    if (viewParam === 'templates') {
+      setActiveNavView('templates');
+      return;
+    }
+    if (viewParam === 'studio') {
+      setActiveNavView('studio');
+      return;
+    }
+    if (viewParam === 'bookshelf') {
+      setActiveNavView('bookshelf');
+      return;
+    }
+    if (viewParam === 'pdf-to-flipbook') {
+      setActiveNavView('home');
+      setIsPdfModalOpen(true);
+      return;
+    }
+
+    const targetBookId = readId || viewParam;
+    if (targetBookId) {
+      // Attempt loading from IndexedDB
+      loadBookFromIndexedDB(targetBookId).then((loaded) => {
+        if (loaded) {
+          resetBookProject(loaded);
+          if (pageParam) {
+            const pageNum = parseInt(pageParam, 10);
+            if (!isNaN(pageNum)) setActivePageIndex(Math.max(0, pageNum - 1));
+          }
+          setActiveNavView('reader');
+        } else {
+          // If not in IndexedDB, check local library
+          const lib = getLibrary();
+          const found = lib.find((b) => b.id === targetBookId);
+          if (found) {
+            resetBookProject(found.project);
+            setActiveNavView('reader');
+          }
+        }
+      });
+    }
+  }, [resetBookProject]);
+
+  // Dynamic SEO Title & Meta Description Synchronization per View / Use Case
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const usecase = params.get('usecase');
+
+    let pageTitle = '3D Flipbook Maker (FlipApp 3D) | Free PDF to 3D Flipbook Converter';
+    let pageDesc =
+      'Free online 3D Flipbook Maker (FlipApp 3D). Convert PDF catalogs, magazines, brochures, menus, and lookbooks into realistic 3D page-turning flipbooks with sound and standalone offline HTML export.';
+
+    if (activeNavView === 'templates') {
+      pageTitle = '24+ Interactive 3D Flipbook Templates | Magazines, Menus & Catalogs — FlipApp 3D';
+      pageDesc =
+        'Browse 24+ ready-to-publish 3D flipbook templates including luxury magazines, fine-dining QR menus, product lookbooks, investor pitch decks, and storybooks.';
+    } else if (activeNavView === 'studio') {
+      pageTitle = `${book.title || 'Untitled Book'} — 3D Flipbook Studio Editor | FlipApp 3D`;
+      pageDesc =
+        'Design interactive 3D digital publications with double-sided page physics, hardcover foil shaders, Web Audio paper sound, and 1-click standalone HTML5 export.';
+    } else if (activeNavView === 'bookshelf') {
+      pageTitle = 'My Saved 3D Bookshelf | FlipApp 3D Digital Publishing Studio';
+    } else if (usecase === 'flipsnack-alternative') {
+      pageTitle = 'Best Free Flipsnack & Issuu Alternative (Standalone HTML5, No Monthly Fee) | FlipApp 3D';
+      pageDesc =
+        'Switch from expensive monthly cloud subscriptions to FlipApp 3D. Convert PDFs to self-hosted standalone HTML5 3D flipbooks with 100% client-side privacy and a $19 lifetime license.';
+    } else if (usecase === 'digital-catalog-maker') {
+      pageTitle = 'Interactive 3D Digital Catalog & Lookbook Maker for Shopify & WordPress | FlipApp 3D';
+    } else if (usecase === 'restaurant-qr-menu') {
+      pageTitle = '3D Interactive Restaurant QR Menu Maker (Standalone HTML & Print QR) | FlipApp 3D';
+    } else if (usecase === 'digital-magazine-creator') {
+      pageTitle = 'Online 3D Digital Magazine & eBook Creator (HTML5 & Vector PDF) | FlipApp 3D';
+    } else if (usecase === 'pitch-deck-flipbook') {
+      pageTitle = '100% Private Investor Pitch Deck to 3D Flipbook Converter (Zero Cloud) | FlipApp 3D';
+    }
+
+    document.title = pageTitle;
+    const metaDesc = document.querySelector('meta[name="description"]');
+    if (metaDesc) {
+      metaDesc.setAttribute('content', pageDesc);
+    }
+  }, [activeNavView, book.title]);
 
   // AUTOMATIC PERSISTENCE & AUTOSAVE (Debounced to avoid disk spam)
   const isInitialMount = useRef(true);
@@ -132,7 +284,7 @@ export default function App() {
       ...JSON.parse(JSON.stringify(selectedProject)),
       id: `book-${Date.now()}`, // Fresh ID so it becomes user's own draft
     };
-    setBook(cloned);
+    resetBookProject(cloned);
     saveActiveBook(cloned);
     setLibraryCount(getLibrary().length);
     setActivePageIndex(0);
@@ -141,7 +293,7 @@ export default function App() {
 
   // Load an existing draft from user's bookshelf
   const handleOpenBookFromShelf = (shelfBook: BookProject) => {
-    setBook(shelfBook);
+    resetBookProject(shelfBook);
     saveActiveBook(shelfBook);
     setActivePageIndex(0);
     setActiveNavView('studio');
@@ -218,7 +370,7 @@ export default function App() {
       ],
     };
 
-    setBook(blankBook);
+    resetBookProject(blankBook);
     saveActiveBook(blankBook);
     setLibraryCount(getLibrary().length);
     setActivePageIndex(0);
@@ -263,7 +415,7 @@ export default function App() {
   // PDF to 3D Flipbook Import Handler
   const handlePdfImportComplete = (importedProject: BookProject, mode: 'new' | 'append') => {
     if (mode === 'new') {
-      setBook(importedProject);
+      resetBookProject(importedProject);
       saveActiveBook(importedProject);
       setLibraryCount(getLibrary().length);
       setActivePageIndex(0);
@@ -377,6 +529,7 @@ export default function App() {
         isInstallable={isInstallable}
         isInstalled={isInstalled}
         libraryCount={libraryCount}
+        activePageIndex={activePageIndex}
       />
 
       {/* Main View Router */}
@@ -425,12 +578,12 @@ export default function App() {
 
       {activeNavView === 'studio' && (
         /* 4. Studio Editor & 3D Interactive Stage */
-        <div className="flex-1 flex flex-col overflow-hidden relative">
+        <div className="flex-1 flex flex-col overflow-hidden relative bg-slate-100">
           <div className="flex-1 flex overflow-hidden relative">
             {/* Left Sidebar: Block Editor & Book Config */}
             <aside
               className={`
-                w-full lg:w-[420px] lg:max-w-[420px] shrink-0 h-full z-20 transition-all duration-300
+                w-full lg:w-[420px] xl:w-[440px] shrink-0 h-full z-20 transition-all duration-200
                 ${
                   mobileViewTab === 'editor'
                     ? 'block'
@@ -445,6 +598,11 @@ export default function App() {
                 setActivePageIndex={setActivePageIndex}
                 onExportHtml={handleExportHtml}
                 onOpenPdfModal={() => setIsPdfModalOpen(true)}
+                onOpenLicenseModal={() => setIsLicenseModalOpen(true)}
+                onUndo={handleUndo}
+                onRedo={handleRedo}
+                canUndo={historyPast.length > 0}
+                canRedo={historyFuture.length > 0}
               />
             </aside>
 
@@ -490,6 +648,7 @@ export default function App() {
             initialPageIndex={activePageIndex}
             onExitReader={() => setActiveNavView('studio')}
             onOpenStudio={() => setActiveNavView('studio')}
+            onOpenLicenseModal={() => setIsLicenseModalOpen(true)}
           />
         </div>
       )}

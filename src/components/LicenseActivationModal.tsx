@@ -16,9 +16,10 @@ import {
 import {
   LicenseInfo,
   getLicenseInfo,
-  activateLicense,
+  verifyAndActivateLicenseAsync,
   deactivateLicense,
   getPlanLimits,
+  GUMROAD_CHECKOUT_URL,
 } from '../utils/licenseManager';
 
 interface LicenseActivationModalProps {
@@ -42,29 +43,27 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
   const isPro = license.tier === 'pro';
   const limits = getPlanLimits(license.tier);
 
-  const handleActivate = (e?: React.FormEvent) => {
+  const handleActivate = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!inputKey.trim()) {
-      setStatusMessage({ text: 'Please enter your license key or AppSumo code.', isError: true });
+      setStatusMessage({ text: 'Please enter your Gumroad license key or voucher code.', isError: true });
       return;
     }
 
     setIsSubmitting(true);
     setStatusMessage(null);
 
-    setTimeout(() => {
-      const res = activateLicense(inputKey);
-      setIsSubmitting(false);
+    const res = await verifyAndActivateLicenseAsync(inputKey);
+    setIsSubmitting(false);
 
-      if (res.success && res.info) {
-        setLicense(res.info);
-        setStatusMessage({ text: res.message, isError: false });
-        setInputKey('');
-        if (onSuccess) onSuccess();
-      } else {
-        setStatusMessage({ text: res.message, isError: true });
-      }
-    }, 300);
+    if (res.success && res.info) {
+      setLicense(res.info);
+      setStatusMessage({ text: res.message, isError: false });
+      setInputKey('');
+      if (onSuccess) onSuccess();
+    } else {
+      setStatusMessage({ text: res.message, isError: true });
+    }
   };
 
   const handleDeactivate = () => {
@@ -102,16 +101,20 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
                 <h2 className="text-lg sm:text-xl font-black tracking-tight text-white">
                   {isPro ? 'Pro Lifetime Active' : 'Upgrade to Pro Lifetime'}
                 </h2>
-                {isPro && (
+                {isPro ? (
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500 text-slate-950 uppercase tracking-wide">
                     VIP
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-400 text-slate-950 uppercase tracking-wide">
+                    EARLY BIRD LTD
                   </span>
                 )}
               </div>
               <p className="text-xs text-slate-300">
                 {isPro
                   ? 'Unlimited publications, 150-page PDF conversion & 100% white-label exports'
-                  : 'Redeem your AppSumo voucher or lifetime license code'}
+                  : 'Pay once, own forever — Zero monthly fees or cloud lock-in'}
               </p>
             </div>
           </div>
@@ -130,7 +133,7 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
                       License Status
                     </span>
                     <span className="text-[11px] font-mono text-emerald-700">
-                      {license.source === 'appsumo' ? 'AppSumo Deal' : 'Lifetime Key'}
+                      {license.planName}
                     </span>
                   </div>
                   <div className="mt-1 font-mono text-sm font-extrabold text-slate-900 bg-white/80 px-2.5 py-1 rounded-lg border border-emerald-200 inline-block">
@@ -149,7 +152,7 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
             <form onSubmit={handleActivate} className="space-y-3">
               <div>
                 <label className="block text-xs font-bold text-slate-750 uppercase tracking-wider mb-1.5">
-                  Enter AppSumo / License Code
+                  Enter Gumroad License Key
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -162,7 +165,7 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
                       setInputKey(e.target.value.toUpperCase());
                       setStatusMessage(null);
                     }}
-                    placeholder="e.g. AS-8924-KLA2-901B or PRO-LIFETIME-2026"
+                    placeholder="Paste your 36-digit Gumroad license key..."
                     className="w-full pl-9 pr-24 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all uppercase"
                     autoFocus
                   />
@@ -172,24 +175,17 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
                     className="absolute right-1.5 top-1.5 bottom-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-300 text-white text-xs font-bold transition-all flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed shadow-xs"
                   >
                     {isSubmitting ? (
-                      <span>Checking...</span>
+                      <span>Verifying...</span>
                     ) : (
                       <>
-                        <span>Redeem</span>
+                        <span>Verify</span>
                         <ArrowRight className="w-3.5 h-3.5" />
                       </>
                     )}
                   </button>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-1.5 flex items-center gap-1">
-                  <span>💡 Tip: You can test with promo code:</span>
-                  <button
-                    type="button"
-                    onClick={() => setInputKey('PRO-LIFETIME-2026')}
-                    className="text-emerald-700 font-mono font-bold underline hover:text-emerald-800 cursor-pointer"
-                  >
-                    PRO-LIFETIME-2026
-                  </button>
+                <p className="text-[11px] text-slate-500 mt-1.5">
+                  Paste the license key sent to your email receipt after purchasing on Gumroad.
                 </p>
               </div>
 
@@ -214,17 +210,17 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
               {/* Direct Gumroad Checkout CTA */}
               <div className="pt-1">
                 <a
-                  href="https://tabrej6.gumroad.com/l/3d-flipbook-pro"
+                  href={GUMROAD_CHECKOUT_URL}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-emerald-600 hover:from-amber-400 hover:to-emerald-500 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer group"
+                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-emerald-600 hover:from-amber-400 hover:to-emerald-500 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer group"
                 >
                   <Crown className="w-4 h-4 text-slate-950" />
-                  <span>Get Pro Lifetime Access ($29) on Gumroad</span>
+                  <span>Get Pro Lifetime Deal ($19 Early Bird) on Gumroad</span>
                   <ExternalLink className="w-3.5 h-3.5 opacity-70 group-hover:translate-x-0.5 transition-transform" />
                 </a>
                 <p className="text-[10px] text-center text-slate-500 mt-1">
-                  ⚡ Instant license key delivery right after checkout via email & receipt.
+                  ⚡ Regular $29 • Instant license key delivery right after checkout via email & receipt.
                 </p>
               </div>
             </form>
@@ -266,34 +262,34 @@ export const LicenseActivationModal: React.FC<LicenseActivationModalProps> = ({
               </div>
 
               <div className="px-4 py-2.5 flex items-center justify-between bg-slate-50/50">
-                <span className="text-slate-700 font-medium">Standalone HTML Exports</span>
+                <span className="text-slate-700 font-medium">Book Exports (.HTML & Vector .PDF)</span>
                 <div className="flex items-center gap-4">
                   <span className="w-16 text-center text-amber-700 font-bold font-mono">1 Export Only</span>
                   <span className="w-24 text-center text-emerald-700 font-bold font-mono">Unlimited ∞</span>
                 </div>
               </div>
 
-              <div className="px-4 py-2.5 flex items-center justify-between bg-slate-50/50">
-                <span className="text-slate-700 font-medium">Whitelabel (No Watermark)</span>
+              <div className="px-4 py-2.5 flex items-center justify-between">
+                <span className="text-slate-700 font-medium">Whitelabel (Remove Branding Badge)</span>
                 <div className="flex items-center gap-4">
-                  <span className="w-16 text-center text-slate-400">Badge</span>
+                  <span className="w-16 text-center text-slate-400">Watermarked</span>
                   <span className="w-24 text-center text-emerald-700 font-bold">100% Clean</span>
                 </div>
               </div>
 
-              <div className="px-4 py-2.5 flex items-center justify-between">
-                <span className="text-slate-700 font-medium">Ultra High-Res Page Textures</span>
+              <div className="px-4 py-2.5 flex items-center justify-between bg-slate-50/50">
+                <span className="text-slate-700 font-medium">Custom Brand Logo & Website Link</span>
                 <div className="flex items-center gap-4">
-                  <span className="w-16 text-center text-slate-400">Standard</span>
-                  <span className="w-24 text-center text-emerald-700 font-bold">Ultra 2x</span>
+                  <span className="w-16 text-center text-slate-400">Locked</span>
+                  <span className="w-24 text-center text-emerald-700 font-bold">Included ✓</span>
                 </div>
               </div>
 
-              <div className="px-4 py-2.5 flex items-center justify-between bg-slate-50/50">
-                <span className="text-slate-700 font-medium">Server & Cloud Storage Fees</span>
+              <div className="px-4 py-2.5 flex items-center justify-between">
+                <span className="text-slate-700 font-medium">Website Embed & QR Generator</span>
                 <div className="flex items-center gap-4">
-                  <span className="w-16 text-center text-emerald-600 font-bold">$0 Free</span>
-                  <span className="w-24 text-center text-emerald-600 font-bold">$0 Free</span>
+                  <span className="w-16 text-center text-emerald-600 font-bold">Included</span>
+                  <span className="w-24 text-center text-emerald-700 font-bold">Commercial ✓</span>
                 </div>
               </div>
             </div>

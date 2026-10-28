@@ -649,16 +649,23 @@ export const PageBlockRenderer: React.FC<PageBlockRendererProps> = ({
     case 'button-cta':
       return (
         <div className="my-3 text-center">
-          <span
-            className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold tracking-wide shadow-sm cursor-default"
+          <a
+            href={block.buttonLink || undefined}
+            target={block.buttonLink ? '_blank' : undefined}
+            rel={block.buttonLink ? 'noopener noreferrer' : undefined}
+            data-pdf-link={block.buttonLink || ''}
+            onClick={(e) => {
+              if (!block.buttonLink) e.preventDefault();
+            }}
+            className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold tracking-wide shadow-sm cursor-pointer no-underline"
             style={{
               backgroundColor: accent,
               color: '#ffffff',
             }}
           >
-            {block.buttonLabel || 'Explore More'}
+            <span>{block.buttonLabel || 'Explore More'}</span>
             <ArrowRight className="w-3.5 h-3.5" />
-          </span>
+          </a>
         </div>
       );
 

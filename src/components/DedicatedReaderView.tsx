@@ -14,26 +14,23 @@ import {
   Play,
   Pause,
   Grid,
-  Share2,
   Sparkles,
   Download,
-  Printer,
-  X,
-  Copy,
-  Check,
-  QrCode,
+  FileText,
+  Loader2,
   ArrowLeft,
-  ExternalLink,
 } from 'lucide-react';
 import { playFlipSound } from '../utils/audio';
-import { createInstantSharePackage, PublishResult } from '../utils/cloudPublisher';
 import { generateStandaloneFlipbookHtml } from '../utils/exportHtml';
+import { exportBookToPdf } from '../utils/exportPdf';
+import { canExportHtml, recordExportHtml } from '../utils/licenseManager';
 
 interface DedicatedReaderViewProps {
   book: BookProject;
   initialPageIndex?: number;
   onExitReader?: () => void;
   onOpenStudio?: () => void;
+  onOpenLicenseModal?: () => void;
 }
 
 export const DedicatedReaderView: React.FC<DedicatedReaderViewProps> = ({
@@ -41,17 +38,17 @@ export const DedicatedReaderView: React.FC<DedicatedReaderViewProps> = ({
   initialPageIndex = 0,
   onExitReader,
   onOpenStudio,
+  onOpenLicenseModal,
 }) => {
   const [activePageIndex, setActivePageIndex] = useState<number>(initialPageIndex);
+  const [pageInputStr, setPageInputStr] = useState<string>(String(initialPageIndex + 1));
   const [soundEnabled, setSoundEnabled] = useState<boolean>(book.soundEnabled ?? true);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [isPlayingAuto, setIsPlayingAuto] = useState<boolean>(false);
-  const [autoPlayInterval, setAutoPlayInterval] = useState<number>(5000);
+  const [autoPlayInterval] = useState<number>(5000);
   const [showThumbnails, setShowThumbnails] = useState<boolean>(false);
-  const [showShareModal, setShowShareModal] = useState<boolean>(false);
-  const [shareData, setShareData] = useState<PublishResult | null>(null);
-  const [copiedLink, setCopiedLink] = useState<boolean>(false);
+  const [isExportingPdf, setIsExportingPdf] = useState<boolean>(false);
   const [sliderVal, setSliderVal] = useState<number>(initialPageIndex);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -59,9 +56,10 @@ export const DedicatedReaderView: React.FC<DedicatedReaderViewProps> = ({
 
   const totalPages = book.pages.length;
 
-  // Sync slider with active page
+  // Sync slider and page input with active page
   useEffect(() => {
     setSliderVal(activePageIndex);
+    setPageInputStr(String(activePageIndex + 1));
   }, [activePageIndex]);
 
   // Handle Keyboard Arrow Navigation
@@ -86,13 +84,12 @@ export const DedicatedReaderView: React.FC<DedicatedReaderViewProps> = ({
         toggleFullscreen();
       } else if (e.key === 'Escape') {
         if (showThumbnails) setShowThumbnails(false);
-        if (showShareModal) setShowShareModal(false);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activePageIndex, totalPages, showThumbnails, showShareModal]);
+  }, [activePageIndex, totalPages, showThumbnails]);
 
   // Auto-play slideshow timer
   useEffect(() => {
@@ -119,10 +116,20 @@ export const DedicatedReaderView: React.FC<DedicatedReaderViewProps> = ({
   // Fullscreen state listener
   useEffect(() => {
     const handleFsChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      const nativeFs = !!(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement
+      );
+      setIsFullscreen(nativeFs);
     };
     document.addEventListener('fullscreenchange', handleFsChange);
-    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+    document.addEventListener('webkitfullscreenchange', handleFsChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFsChange);
+      document.removeEventListener('webkitfullscreenchange', handleFsChange);
+    };
   }, []);
 
   const handleNextPage = () => {
@@ -148,24 +155,75 @@ export const DedicatedReaderView: React.FC<DedicatedReaderViewProps> = ({
   };
 
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen?.().catch(() => {});
+    const innerBtn = containerRef.current?.querySelector(
+      '#btn-fullscreen'
+    ) as HTMLButtonElement | null;
+    if (innerBtn) {
+      innerBtn.click();
+      setIsFullscreen((prev) => !prev);
+      return;
+    }
+
+    const nativeFs = !!(
+      document.fullscreenElement ||
+      (document as any).webkitFullscreenElement ||
+      (document as any).mozFullScreenElement ||
+      (document as any).msFullscreenElement
+    );
+
+    if (isFullscreen || nativeFs) {
+      if (nativeFs) {
+        const exitFn =
+          document.exitFullscreen ||
+          (document as any).webkitExitFullscreen ||
+          (document as any).mozCancelFullScreen ||
+          (document as any).msExitFullscreen;
+        exitFn?.call(document)?.catch?.(() => {});
+      }
+      setIsFullscreen(false);
     } else {
-      document.exitFullscreen?.().catch(() => {});
+      setIsFullscreen(true);
+      const el = containerRef.current as any;
+      const reqFn =
+        el?.requestFullscreen ||
+        el?.webkitRequestFullscreen ||
+        el?.mozRequestFullScreen ||
+        el?.msRequestFullscreen;
+      if (reqFn) {
+        try {
+          const p = reqFn.call(el);
+          if (p && typeof p.catch === 'function') {
+            p.catch(() => setIsFullscreen(true));
+          }
+        } catch {
+          setIsFullscreen(true);
+        }
+      }
     }
   };
 
-  const handleOpenShare = async () => {
+  const handleDownloadPdf = async () => {
+    if (isExportingPdf) return;
+    const exportCheck = canExportHtml();
+    if (!exportCheck.allowed) {
+      if (onOpenLicenseModal) onOpenLicenseModal();
+      return;
+    }
+    setIsExportingPdf(true);
     try {
-      const result = await createInstantSharePackage(book);
-      setShareData(result);
-      setShowShareModal(true);
-    } catch (err) {
-      console.warn('Failed to create share package:', err);
+      await exportBookToPdf(book);
+      recordExportHtml();
+    } finally {
+      setIsExportingPdf(false);
     }
   };
 
   const handleDownloadHtml = () => {
+    const exportCheck = canExportHtml();
+    if (!exportCheck.allowed) {
+      if (onOpenLicenseModal) onOpenLicenseModal();
+      return;
+    }
     const htmlContent = generateStandaloneFlipbookHtml(book);
     const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -176,16 +234,8 @@ export const DedicatedReaderView: React.FC<DedicatedReaderViewProps> = ({
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    recordExportHtml();
   };
-
-  // Determine displayed spread numbers
-  const isCover = activePageIndex === 0;
-  const isBackCover = activePageIndex >= totalPages - 1;
-  const displayPageStr = isCover
-    ? 'Cover'
-    : isBackCover
-    ? `Page ${totalPages} (Back)`
-    : `Pages ${activePageIndex}–${Math.min(totalPages, activePageIndex + 1)} of ${totalPages}`;
 
   return (
     <div
@@ -221,29 +271,66 @@ export const DedicatedReaderView: React.FC<DedicatedReaderViewProps> = ({
           </div>
         </div>
 
-        {/* Center: Page Counter Pill */}
-        <div className="hidden sm:flex items-center gap-2 bg-slate-800/90 border border-slate-700 px-3 py-1 rounded-full text-xs font-semibold text-emerald-400 shadow-inner">
-          <span>{displayPageStr}</span>
+        {/* Center: Jump-to-Page Input Pill */}
+        <div
+          className="hidden sm:flex items-center gap-1.5 bg-slate-800/90 border border-slate-700 px-3 py-1 rounded-full text-xs font-semibold text-emerald-400 shadow-inner"
+          title="Type page number and press Enter to jump"
+        >
+          <span className="text-slate-400">Page</span>
+          <input
+            type="number"
+            min={1}
+            max={totalPages}
+            value={pageInputStr}
+            onChange={(e) => setPageInputStr(e.target.value)}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') {
+                const parsed = parseInt(pageInputStr, 10);
+                if (!isNaN(parsed)) {
+                  handleJumpToPage(parsed - 1);
+                } else {
+                  setPageInputStr(String(activePageIndex + 1));
+                }
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            onBlur={() => {
+              const parsed = parseInt(pageInputStr, 10);
+              if (!isNaN(parsed)) {
+                handleJumpToPage(parsed - 1);
+              } else {
+                setPageInputStr(String(activePageIndex + 1));
+              }
+            }}
+            className="w-11 px-1.5 py-0.5 text-center font-mono font-bold text-xs text-white bg-slate-900 border border-slate-600 focus:border-emerald-400 rounded-md focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          />
+          <span className="text-slate-400 font-mono">of {totalPages}</span>
         </div>
 
-        {/* Right: Quick Actions & Viral CTA */}
+        {/* Right: Quick Export Actions (1. HTML, 2. PDF) */}
         <div className="flex items-center gap-2">
-          {/* Share Button */}
-          <button
-            onClick={handleOpenShare}
-            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-emerald-700/30 transition-all hover:scale-105 cursor-pointer"
-          >
-            <Share2 className="w-3.5 h-3.5" />
-            <span>Share</span>
-          </button>
-
-          {/* Download Standalone HTML */}
+          {/* 1. Export HTML */}
           <button
             onClick={handleDownloadHtml}
-            title="Download Offline HTML"
-            className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer hidden md:flex"
+            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm shadow-emerald-700/30 transition-all hover:scale-105 cursor-pointer"
           >
-            <Download className="w-4 h-4" />
+            <Download className="w-3.5 h-3.5" />
+            <span>Export HTML</span>
+          </button>
+
+          {/* 2. Export PDF */}
+          <button
+            onClick={handleDownloadPdf}
+            disabled={isExportingPdf}
+            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-60"
+          >
+            {isExportingPdf ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+            ) : (
+              <FileText className="w-3.5 h-3.5 text-emerald-400" />
+            )}
+            <span>{isExportingPdf ? 'PDF...' : 'Export PDF'}</span>
           </button>
 
           {/* Open in Editor / Create Your Own Flipbook CTA */}
@@ -286,16 +373,21 @@ export const DedicatedReaderView: React.FC<DedicatedReaderViewProps> = ({
         {/* 3D Flipbook Viewer */}
         <div
           className="w-full h-full flex items-center justify-center transition-transform duration-200"
-          style={{
-            transform: `scale(${zoomLevel})`,
-            transformOrigin: 'center center',
-          }}
+          style={
+            zoomLevel !== 1
+              ? {
+                  transform: `scale(${zoomLevel})`,
+                  transformOrigin: 'center center',
+                }
+              : undefined
+          }
         >
           <FlipbookPreview
             book={book}
             activePageIndex={activePageIndex}
             onPageSelect={setActivePageIndex}
             isMobilePreviewMode={false}
+            hideInternalControls={true}
           />
         </div>
 
@@ -471,122 +563,6 @@ export const DedicatedReaderView: React.FC<DedicatedReaderViewProps> = ({
           </button>
         </div>
       </footer>
-
-      {/* 5. INSTANT SHARE & QR POPUP MODAL */}
-      {showShareModal && shareData && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col text-slate-100">
-            {/* Modal Header */}
-            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
-                  <Share2 className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white">Share 3D Flipbook</h3>
-                  <p className="text-[11px] text-slate-400">Anyone with this link can read online</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowShareModal(false)}
-                className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-5 space-y-5 overflow-y-auto max-h-[80vh]">
-              {/* Direct Share Link Bar */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-300">Public Reader Link</label>
-                <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl p-1.5">
-                  <input
-                    type="text"
-                    readOnly
-                    value={shareData.shareUrl}
-                    className="flex-1 bg-transparent px-2.5 text-xs text-emerald-400 font-mono focus:outline-none select-all"
-                  />
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(shareData.shareUrl);
-                      setCopiedLink(true);
-                      setTimeout(() => setCopiedLink(false), 2000);
-                    }}
-                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0 transition-colors"
-                  >
-                    {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copiedLink ? 'Copied!' : 'Copy'}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* QR Code & 1-Click Social Sharing */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* QR Code Box */}
-                <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col items-center justify-center text-center gap-2">
-                  <img
-                    src={shareData.qrCodeDataUrl}
-                    alt="Scan QR Code"
-                    className="w-32 h-32 rounded-lg bg-white p-1 border border-slate-700 shadow-md"
-                  />
-                  <div className="text-[11px] text-slate-400 font-semibold flex items-center gap-1">
-                    <QrCode className="w-3 h-3 text-emerald-400" />
-                    <span>Scan on Mobile</span>
-                  </div>
-                </div>
-
-                {/* 1-Click Social Channels */}
-                <div className="flex flex-col justify-between space-y-2">
-                  <a
-                    href={shareData.whatsAppUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all hover:scale-[1.02]"
-                  >
-                    <span>💬 Share via WhatsApp</span>
-                  </a>
-
-                  <a
-                    href={shareData.telegramUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-full py-2 px-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors"
-                  >
-                    <span>✈️ Telegram</span>
-                  </a>
-
-                  <a
-                    href={shareData.twitterUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-full py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors"
-                  >
-                    <span>✖️ Post to X (Twitter)</span>
-                  </a>
-
-                  <a
-                    href={shareData.emailUrl}
-                    className="w-full py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-bold flex items-center justify-center gap-2 transition-colors"
-                  >
-                    <span>✉️ Send by Email</span>
-                  </a>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="p-3 bg-slate-950 border-t border-slate-800 flex justify-end">
-              <button
-                onClick={() => setShowShareModal(false)}
-                className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold cursor-pointer"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
